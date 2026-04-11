@@ -229,7 +229,7 @@ public class SpaceInvadersActivity extends Activity {
                         for (CheckBox box : checkBoxes) {
                             if (box.isChecked()) checkedCount++;
                         }
-                        if (checkedCount > Skill.MAX_ACTIVE_SKILLS) {
+                        if (checkedCount > 10) { // Will be replaced by point budget in Phase 4
                             cb.setChecked(false);
                         }
                     }

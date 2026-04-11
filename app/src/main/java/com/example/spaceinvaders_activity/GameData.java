@@ -339,6 +339,45 @@ public class GameData {
         prefs.edit().putInt(KEY_SELECTED_SKIN, skinId).apply();
     }
 
+    // --- Skill Purchases ---
+
+    private static final String KEY_PURCHASED_SKILLS = "purchasedSkills";
+
+    /**
+     * Purchase a skill permanently using spendable XP.
+     * Returns true if purchase succeeded (had enough XP).
+     */
+    public boolean purchaseSkill(int skillId) {
+        Skill skill = Skill.getSkillById(skillId);
+        if (skill == null) return false;
+        int cost = SkillTree.getXPCost(skill);
+        if (!spendXP(cost)) return false;
+        // Add to purchased set
+        String purchased = prefs.getString(KEY_PURCHASED_SKILLS, "");
+        if (!isSkillPurchased(skillId)) {
+            if (purchased.isEmpty()) {
+                purchased = String.valueOf(skillId);
+            } else {
+                purchased += "," + skillId;
+            }
+            prefs.edit().putString(KEY_PURCHASED_SKILLS, purchased).apply();
+        }
+        return true;
+    }
+
+    public boolean isSkillPurchased(int skillId) {
+        // Original 10 skills (IDs 0-9) are always available (backward compat)
+        if (skillId >= 0 && skillId <= 9) return true;
+        String purchased = prefs.getString(KEY_PURCHASED_SKILLS, "");
+        if (purchased.isEmpty()) return false;
+        for (String s : purchased.split(",")) {
+            try {
+                if (Integer.parseInt(s.trim()) == skillId) return true;
+            } catch (NumberFormatException e) { /* skip */ }
+        }
+        return false;
+    }
+
     // --- Reset ---
 
     public void resetAll() {
