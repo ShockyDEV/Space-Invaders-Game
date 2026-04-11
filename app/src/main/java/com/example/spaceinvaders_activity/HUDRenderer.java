@@ -84,12 +84,36 @@ public class HUDRenderer {
         // Active skills icons at bottom-left
         drawActiveSkills(canvas, paint, state.activeSkills);
 
+        // Bottom-right indicators
+        float bottomY = screenY - 20;
+
+        // Ultimate laser cooldown
+        if (player.hasUltimateLaserSkill()) {
+            paint.setTextSize(smallTextSize);
+            paint.setTextAlign(Paint.Align.RIGHT);
+            long cooldown = player.getUltimateCooldownRemaining();
+            if (cooldown > 0) {
+                paint.setColor(Color.argb(150, 150, 100, 200));
+                canvas.drawText("ULTIMATE: " + (cooldown / 1000) + "s", screenX - 20, bottomY, paint);
+            } else if (player.isCurrentlyCharging()) {
+                float flash = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() * 0.01);
+                paint.setColor(Color.argb((int) (255 * flash), 255, 100, 255));
+                canvas.drawText("CHARGING...", screenX - 20, bottomY, paint);
+            } else {
+                float flash = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() * 0.005);
+                paint.setColor(Color.argb((int) (200 * flash), 255, 100, 255));
+                canvas.drawText("[ULTIMATE READY - hold to charge]", screenX - 20, bottomY, paint);
+            }
+            paint.setTextAlign(Paint.Align.LEFT);
+            bottomY -= smallTextSize * 1.5f;
+        }
+
         // Bomb indicator if available
         if (player.hasBombSkill() && player.isBombAvailable()) {
             paint.setColor(Color.argb(200, 255, 80, 80));
             paint.setTextSize(smallTextSize);
             paint.setTextAlign(Paint.Align.RIGHT);
-            canvas.drawText("[BOMB READY - 2 finger tap]", screenX - 20, screenY - 20, paint);
+            canvas.drawText("[BOMB READY - 2 finger tap]", screenX - 20, bottomY, paint);
             paint.setTextAlign(Paint.Align.LEFT);
         }
     }

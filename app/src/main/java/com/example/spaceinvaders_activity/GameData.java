@@ -237,6 +237,57 @@ public class GameData {
         return ids;
     }
 
+    // --- Settings ---
+
+    private static final String KEY_MUSIC_VOLUME = "musicVolume";
+    private static final String KEY_SFX_VOLUME = "sfxVolume";
+    private static final String KEY_VIBRATION = "vibrationEnabled";
+
+    public int getMusicVolume() { return prefs.getInt(KEY_MUSIC_VOLUME, 80); }
+    public void setMusicVolume(int vol) { prefs.edit().putInt(KEY_MUSIC_VOLUME, vol).apply(); }
+    public int getSfxVolume() { return prefs.getInt(KEY_SFX_VOLUME, 80); }
+    public void setSfxVolume(int vol) { prefs.edit().putInt(KEY_SFX_VOLUME, vol).apply(); }
+    public boolean isVibrationEnabled() { return prefs.getBoolean(KEY_VIBRATION, true); }
+    public void setVibrationEnabled(boolean enabled) { prefs.edit().putBoolean(KEY_VIBRATION, enabled).apply(); }
+
+    // --- Achievements ---
+
+    private static final String KEY_ACHIEVEMENTS = "achievements";
+    private static final String KEY_TOTAL_POWERUPS = "totalPowerups";
+
+    public void unlockAchievement(int id) {
+        String unlocked = prefs.getString(KEY_ACHIEVEMENTS, "");
+        if (!isAchievementUnlocked(id)) {
+            if (!unlocked.isEmpty()) unlocked += ",";
+            unlocked += id;
+            prefs.edit().putString(KEY_ACHIEVEMENTS, unlocked).apply();
+        }
+    }
+
+    public boolean isAchievementUnlocked(int id) {
+        String unlocked = prefs.getString(KEY_ACHIEVEMENTS, "");
+        if (unlocked.isEmpty()) return false;
+        for (String s : unlocked.split(",")) {
+            try {
+                if (Integer.parseInt(s.trim()) == id) return true;
+            } catch (NumberFormatException e) { /* skip */ }
+        }
+        return false;
+    }
+
+    public int getUnlockedAchievementCount() {
+        String unlocked = prefs.getString(KEY_ACHIEVEMENTS, "");
+        if (unlocked.isEmpty()) return 0;
+        return unlocked.split(",").length;
+    }
+
+    public void addPowerupCollected() {
+        int total = prefs.getInt(KEY_TOTAL_POWERUPS, 0) + 1;
+        prefs.edit().putInt(KEY_TOTAL_POWERUPS, total).apply();
+    }
+
+    public int getTotalPowerups() { return prefs.getInt(KEY_TOTAL_POWERUPS, 0); }
+
     // --- Reset ---
 
     public void resetAll() {

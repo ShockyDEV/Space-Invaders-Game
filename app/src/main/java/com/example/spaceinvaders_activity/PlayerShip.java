@@ -32,6 +32,18 @@ public class PlayerShip {
     private boolean hasRegeneration = false;
     private boolean hasUltimateLaser = false;
 
+    // Speed Boost: lerp factor for ship tracking (0.15 = sluggish, 1.0 = instant snap)
+    private float speedFactor = 0.15f;
+    private float targetX;
+
+    // Ultimate Laser: hold-to-charge mechanic
+    private boolean isCharging = false;
+    private long chargeStartTime = 0;
+    private float chargeProgress = 0f;
+    private long ultimateCooldownEnd = 0;
+    private static final long CHARGE_DURATION = 1500; // 1.5 seconds to fully charge
+    private static final long ULTIMATE_COOLDOWN = 15000; // 15 second cooldown
+
     // Temporary power-up buffs
     private boolean tempRapidFire = false;
     private long tempRapidFireEnd = 0;
@@ -39,7 +51,6 @@ public class PlayerShip {
     private long tempShieldEnd = 0;
     private boolean tempScoreBoost = false;
     private long tempScoreBoostEnd = 0;
-    private boolean frozen = false; // For freeze power-up (freezes enemies, not player)
 
     // Regeneration timer
     private long lastRegenTime = 0;
@@ -59,6 +70,7 @@ public class PlayerShip {
         height_EGG = screenY / 10f;
 
         x = screenX / 2f;
+        targetX = x;
         y = screenY - height_EGG;
 
         bitmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.playership);
@@ -89,6 +101,7 @@ public class PlayerShip {
                     break;
                 case Skill.SPEED_BOOST:
                     hasSpeedBoost = true;
+                    speedFactor = 1.0f; // Instant snap tracking
                     break;
                 case Skill.BOMB:
                     hasBomb = true;
@@ -146,6 +159,49 @@ public class PlayerShip {
     public boolean hasScoreMultiplierSkill() { return hasScoreMultiplier; }
     public boolean hasRegenerationSkill() { return hasRegeneration; }
 
+    // --- Ultimate Laser charge mechanic ---
+
+    public void startCharging() {
+        if (!hasUltimateLaser || !isUltimateReady()) return;
+        isCharging = true;
+        chargeStartTime = System.currentTimeMillis();
+        chargeProgress = 0f;
+    }
+
+    public void updateCharge() {
+        if (!isCharging) return;
+        long elapsed = System.currentTimeMillis() - chargeStartTime;
+        chargeProgress = Math.min(1.0f, elapsed / (float) CHARGE_DURATION);
+    }
+
+    public boolean releaseCharge() {
+        if (!isCharging || chargeProgress < 1.0f) {
+            cancelCharge();
+            return false;
+        }
+        isCharging = false;
+        chargeProgress = 0f;
+        ultimateCooldownEnd = System.currentTimeMillis() + ULTIMATE_COOLDOWN;
+        return true;
+    }
+
+    public void cancelCharge() {
+        isCharging = false;
+        chargeProgress = 0f;
+    }
+
+    public boolean isUltimateReady() {
+        return hasUltimateLaser && System.currentTimeMillis() > ultimateCooldownEnd;
+    }
+
+    public boolean isCurrentlyCharging() { return isCharging; }
+    public float getChargeProgress() { return chargeProgress; }
+
+    public long getUltimateCooldownRemaining() {
+        long remaining = ultimateCooldownEnd - System.currentTimeMillis();
+        return Math.max(0, remaining);
+    }
+
     public void useBomb() { bombAvailable = false; }
 
     public int getExtraLives() {
@@ -177,10 +233,12 @@ public class PlayerShip {
     // --- Position & shooting ---
 
     public void updatePosition(float touchX) {
-        x = touchX - length_EGG / 2;
-        // Clamp to screen bounds
-        if (x < 0) x = 0;
-        if (x > screenX - length_EGG) x = screenX - length_EGG;
+        targetX = touchX - length_EGG / 2;
+        // Clamp target to screen bounds
+        if (targetX < 0) targetX = 0;
+        if (targetX > screenX - length_EGG) targetX = screenX - length_EGG;
+        // Lerp toward target (speedFactor: 0.15 default, 1.0 with Speed Boost)
+        x = x + (targetX - x) * speedFactor;
         rect.left = x;
         rect.right = x + length_EGG;
         rect.top = y;
@@ -213,25 +271,60 @@ public class PlayerShip {
             if (shieldPulse > 2 * Math.PI) shieldPulse -= 2 * (float) Math.PI;
         }
 
+        // Update ultimate laser charge
+        updateCharge();
+
         rect.left = x;
         rect.right = x + length_EGG;
         rect.top = y;
         rect.bottom = y + height_EGG;
     }
 
-    // Draw shield effect
+    // Draw shield effect, charge indicator, buff indicators
     public void drawEffects(Canvas canvas, Paint paint) {
+        float cx = x + length_EGG / 2;
+        float cy = y + height_EGG / 2;
+
+        // Shield bubble
         if (isShielded()) {
             float pulse = 0.5f + 0.5f * (float) Math.sin(shieldPulse);
             int alpha = (int) (100 + 80 * pulse);
             paint.setColor(Color.argb(alpha, 0, 150, 255));
-            float cx = x + length_EGG / 2;
-            float cy = y + height_EGG / 2;
             float radius = Math.max(length_EGG, height_EGG) * 0.7f;
             canvas.drawCircle(cx, cy, radius, paint);
         }
 
-        // Draw active buff indicators
+        // Ultimate laser charge indicator
+        if (isCharging) {
+            // Growing aura ring around ship
+            float maxRadius = Math.max(length_EGG, height_EGG) * 0.9f;
+            float radius = maxRadius * chargeProgress;
+            int r = (int) (150 + 105 * chargeProgress);
+            int b = (int) (255 * chargeProgress);
+            paint.setColor(Color.argb((int) (180 * chargeProgress), r, 50, b));
+            canvas.drawCircle(cx, cy, radius, paint);
+
+            // Progress arc text
+            paint.setColor(Color.argb(220, 255, 200, 255));
+            paint.setTextSize(height_EGG * 0.25f);
+            paint.setTextAlign(Paint.Align.CENTER);
+            int pct = (int) (chargeProgress * 100);
+            canvas.drawText("CHARGING " + pct + "%", cx, y - 20, paint);
+            paint.setTextAlign(Paint.Align.LEFT);
+
+            if (chargeProgress >= 1.0f) {
+                // Ready flash
+                float flash = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() * 0.015);
+                paint.setColor(Color.argb((int) (200 * flash), 255, 100, 255));
+                canvas.drawCircle(cx, cy, maxRadius, paint);
+                paint.setColor(Color.argb(255, 255, 255, 255));
+                paint.setTextAlign(Paint.Align.CENTER);
+                canvas.drawText("RELEASE!", cx, y - 20, paint);
+                paint.setTextAlign(Paint.Align.LEFT);
+            }
+        }
+
+        // Active buff indicators
         float indicatorY = y - 15;
         float indicatorX = x;
         if (tempRapidFire && System.currentTimeMillis() < tempRapidFireEnd) {

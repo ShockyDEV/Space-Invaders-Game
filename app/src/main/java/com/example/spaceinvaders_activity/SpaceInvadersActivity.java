@@ -13,6 +13,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -99,6 +100,10 @@ public class SpaceInvadersActivity extends Activity {
             Button statsBtn = createMenuButton("STATS");
             layout.addView(statsBtn);
 
+            // Settings button
+            Button settingsBtn = createMenuButton("SETTINGS");
+            layout.addView(settingsBtn);
+
             builder.setView(layout);
             AlertDialog dialog = builder.create();
             dialog.setCancelable(false);
@@ -121,6 +126,11 @@ public class SpaceInvadersActivity extends Activity {
             statsBtn.setOnClickListener(v -> {
                 dialog.dismiss();
                 showStats();
+            });
+
+            settingsBtn.setOnClickListener(v -> {
+                dialog.dismiss();
+                showSettings();
             });
 
             dialog.show();
@@ -467,6 +477,87 @@ public class SpaceInvadersActivity extends Activity {
 
             builder.setView(layout);
             builder.setPositiveButton("BACK", (dialog, which) -> showMainMenu());
+
+            AlertDialog dialog = builder.create();
+            dialog.setCancelable(false);
+            dialog.show();
+        });
+    }
+
+    // ==================== SETTINGS ====================
+
+    private void showSettings() {
+        runOnUiThread(() -> {
+            GameData data = spaceInvadersEngine.getGameData();
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setPadding(60, 40, 60, 40);
+
+            TextView title = new TextView(this);
+            title.setText("SETTINGS");
+            title.setTextSize(22);
+            title.setTypeface(Typeface.DEFAULT_BOLD);
+            title.setGravity(Gravity.CENTER);
+            title.setPadding(0, 0, 0, 30);
+            layout.addView(title);
+
+            // Music Volume
+            TextView musicLabel = new TextView(this);
+            musicLabel.setText("Music Volume: " + data.getMusicVolume() + "%");
+            musicLabel.setTextSize(15);
+            musicLabel.setPadding(0, 10, 0, 5);
+            layout.addView(musicLabel);
+
+            SeekBar musicBar = new SeekBar(this);
+            musicBar.setMax(100);
+            musicBar.setProgress(data.getMusicVolume());
+            musicBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    musicLabel.setText("Music Volume: " + progress + "%");
+                }
+                public void onStartTrackingTouch(SeekBar seekBar) {}
+                public void onStopTrackingTouch(SeekBar seekBar) {}
+            });
+            layout.addView(musicBar);
+
+            // SFX Volume
+            TextView sfxLabel = new TextView(this);
+            sfxLabel.setText("SFX Volume: " + data.getSfxVolume() + "%");
+            sfxLabel.setTextSize(15);
+            sfxLabel.setPadding(0, 20, 0, 5);
+            layout.addView(sfxLabel);
+
+            SeekBar sfxBar = new SeekBar(this);
+            sfxBar.setMax(100);
+            sfxBar.setProgress(data.getSfxVolume());
+            sfxBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    sfxLabel.setText("SFX Volume: " + progress + "%");
+                }
+                public void onStartTrackingTouch(SeekBar seekBar) {}
+                public void onStopTrackingTouch(SeekBar seekBar) {}
+            });
+            layout.addView(sfxBar);
+
+            // Vibration toggle
+            CheckBox vibrationCb = new CheckBox(this);
+            vibrationCb.setText("Vibration");
+            vibrationCb.setTextSize(15);
+            vibrationCb.setChecked(data.isVibrationEnabled());
+            vibrationCb.setPadding(0, 20, 0, 10);
+            layout.addView(vibrationCb);
+
+            builder.setView(layout);
+            builder.setPositiveButton("SAVE", (dialog, which) -> {
+                data.setMusicVolume(musicBar.getProgress());
+                data.setSfxVolume(sfxBar.getProgress());
+                data.setVibrationEnabled(vibrationCb.isChecked());
+                spaceInvadersEngine.reloadSettings();
+                showMainMenu();
+            });
+            builder.setNegativeButton("CANCEL", (dialog, which) -> showMainMenu());
 
             AlertDialog dialog = builder.create();
             dialog.setCancelable(false);

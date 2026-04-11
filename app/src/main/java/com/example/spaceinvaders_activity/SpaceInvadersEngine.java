@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Random;
 
 public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
@@ -69,6 +70,22 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private long lastDropDownTime = System.nanoTime();
     private long dropDownCooldown = 1_000_000_000;
 
+    // Screen shake
+    private float shakeOffsetX = 0, shakeOffsetY = 0;
+    private float shakeIntensity = 0;
+    private long shakeEndTime = 0;
+    private Random shakeRandom = new Random();
+
+    // Ultimate laser touch tracking
+    private long touchDownTime = 0;
+    private float touchDownX = 0, touchDownY = 0;
+    private boolean isHoldingForUltimate = false;
+    private static final float HOLD_MOVE_THRESHOLD = 40f;
+
+    // Audio volume settings
+    private float musicVolume = 0.8f;
+    private float sfxVolume = 0.8f;
+
     private SpaceInvadersActivity activity;
 
     public SpaceInvadersEngine(Context context, int x, int y) {
@@ -114,6 +131,42 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         } catch (IOException e) {
             Log.e("SpaceInvaders", "Failed to load sound files", e);
         }
+
+        // Load volume settings
+        reloadSettings();
+    }
+
+    // --- Screen Shake ---
+
+    private void triggerShake(float intensity, long durationMs) {
+        shakeIntensity = intensity;
+        shakeEndTime = System.currentTimeMillis() + durationMs;
+    }
+
+    private void updateShake() {
+        long now = System.currentTimeMillis();
+        if (now < shakeEndTime) {
+            float decay = Math.min(1f, (shakeEndTime - now) / 300f);
+            shakeOffsetX = (shakeRandom.nextFloat() - 0.5f) * 2 * shakeIntensity * decay;
+            shakeOffsetY = (shakeRandom.nextFloat() - 0.5f) * 2 * shakeIntensity * decay;
+        } else {
+            shakeOffsetX = 0;
+            shakeOffsetY = 0;
+        }
+    }
+
+    // --- Settings ---
+
+    public void reloadSettings() {
+        musicVolume = gameData.getMusicVolume() / 100f;
+        sfxVolume = gameData.getSfxVolume() / 100f;
+        if (backgroundMusic != null) {
+            backgroundMusic.setVolume(musicVolume, musicVolume);
+        }
+    }
+
+    private void playSfx(int soundId) {
+        soundPool.play(soundId, sfxVolume, sfxVolume, 0, 0, 1);
     }
 
     // Called by activity to start a new game with selected skills
@@ -191,9 +244,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             backgroundMusic = MediaPlayer.create(context, R.raw.background);
             if (backgroundMusic != null) {
                 backgroundMusic.setLooping(true);
+                backgroundMusic.setVolume(musicVolume, musicVolume);
                 backgroundMusic.start();
             }
         } else if (!backgroundMusic.isPlaying()) {
+            backgroundMusic.setVolume(musicVolume, musicVolume);
             backgroundMusic.start();
         }
     }
@@ -301,7 +356,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
         // Enemies reached bottom = lose a life and reset level
         if (reachedBottom) {
-            soundPool.play(playerLoseID, 1, 1, 0, 0, 1);
+            playSfx(playerLoseID);
             state.onPlayerHit();
             if (state.gameOver) {
                 endGame();
@@ -320,8 +375,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Update power-ups
         updatePowerUps();
 
-        // Update particles
+        // Update particles and screen shake
         particles.update(fps);
+        updateShake();
 
         // Check level complete
         if (aliveCount == 0) {
@@ -346,7 +402,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             for (int j = 0; j < numInvaders; j++) {
                 if (invaders[j].getVisibility() && RectF.intersects(b.getRect(), invaders[j].getRect())) {
                     invaders[j].setInvisible();
-                    soundPool.play(invaderExplodeID, 1, 1, 0, 0, 1);
+                    playSfx(invaderExplodeID);
 
                     int points = invaders[j].getPointValue();
                     state.registerKill(points, playerShip.getScoreMultiplier());
@@ -378,7 +434,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             if (!hitSomething && boss != null && boss.getVisibility()
                     && RectF.intersects(b.getRect(), boss.getRect())) {
                 boolean defeated = boss.takeDamage(b.getDamage());
-                soundPool.play(invaderExplodeID, 1, 1, 0, 0, 1);
+                playSfx(invaderExplodeID);
 
                 float bx = boss.getX() + boss.getLength() / 2;
                 float by = boss.getY() + boss.getHeight() / 2;
@@ -389,6 +445,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                     particles.addBigExplosion(bx, by);
                     particles.addBanner("BOSS DEFEATED!", Color.rgb(255, 215, 0),
                             screenX, screenY, screenY / 12f);
+                    triggerShake(20f, 500);
                 }
 
                 if (!b.isPiercing()) hitSomething = true;
@@ -399,7 +456,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                 for (int j = 0; j < numBricks; j++) {
                     if (bricks[j].getVisibility() && RectF.intersects(b.getRect(), bricks[j].getRect())) {
                         bricks[j].setInvisible();
-                        soundPool.play(damageShelterID, 1, 1, 0, 0, 1);
+                        playSfx(damageShelterID);
                         hitSomething = true;
                         break;
                     }
@@ -427,7 +484,8 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                             screenX, screenY, screenY / 15f);
                 } else {
                     state.onPlayerHit();
-                    soundPool.play(playerExplodeID, 1, 1, 0, 0, 1);
+                    playSfx(playerExplodeID);
+                    triggerShake(12f, 300);
                     particles.addExplosion(playerShip.getX() + playerShip.getLength_EGG() / 2,
                             screenY - playerShip.getHeight_EGG() / 2, Color.RED, 15);
 
@@ -444,7 +502,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             for (int j = 0; j < numBricks; j++) {
                 if (bricks[j].getVisibility() && RectF.intersects(b.getRect(), bricks[j].getRect())) {
                     bricks[j].setInvisible();
-                    soundPool.play(damageShelterID, 1, 1, 0, 0, 1);
+                    playSfx(damageShelterID);
                     invadersBullets[i] = new Bullet(screenY);
                     break;
                 }
@@ -546,7 +604,8 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         }
 
         particles.addBanner("ORBITAL BOMB!", Color.RED, screenX, screenY, screenY / 10f);
-        soundPool.play(playerExplodeID, 1, 1, 0, 0, 1);
+        playSfx(playerExplodeID);
+        triggerShake(15f, 400);
     }
 
     // ==================== DRAW ====================
@@ -555,6 +614,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         if (!ourHolder.getSurface().isValid()) return;
 
         canvas = ourHolder.lockCanvas();
+
+        // Apply screen shake
+        canvas.save();
+        canvas.translate(shakeOffsetX, shakeOffsetY);
 
         // Background
         canvas.drawBitmap(backgroundBitmap, 0, 0, null);
@@ -628,6 +691,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             hudRenderer.drawPauseScreen(canvas, paint);
         }
 
+        // Restore from screen shake translation
+        canvas.restore();
+
         ourHolder.unlockCanvasAndPost(canvas);
     }
 
@@ -643,9 +709,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             return true;
         }
 
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+        if (action == MotionEvent.ACTION_DOWN) {
             // Tap to dismiss game over
-            if (state.gameOver && action == MotionEvent.ACTION_DOWN) {
+            if (state.gameOver) {
                 state.isFirstRun = true;
                 activity.showMainMenu();
                 return true;
@@ -656,17 +722,56 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                 state.paused = false;
             }
 
+            // Record touch down for ultimate laser hold detection
+            touchDownTime = System.currentTimeMillis();
+            touchDownX = motionEvent.getX();
+            touchDownY = motionEvent.getY();
+
+            // Start charging ultimate if available and touching upper area
+            if (!state.paused && playerShip.hasUltimateLaserSkill()
+                    && playerShip.isUltimateReady()
+                    && motionEvent.getY() < screenY - screenY / 8f) {
+                isHoldingForUltimate = true;
+                playerShip.startCharging();
+            }
+
             // Move ship
             if (!state.paused) {
                 playerShip.updatePosition(motionEvent.getX());
             }
+        } else if (action == MotionEvent.ACTION_MOVE) {
+            if (!state.paused) {
+                playerShip.updatePosition(motionEvent.getX());
+            }
+
+            // Cancel charge if finger moved too far
+            if (isHoldingForUltimate) {
+                float dx = motionEvent.getX() - touchDownX;
+                float dy = motionEvent.getY() - touchDownY;
+                if (Math.sqrt(dx * dx + dy * dy) > HOLD_MOVE_THRESHOLD) {
+                    playerShip.cancelCharge();
+                    isHoldingForUltimate = false;
+                }
+            }
         } else if (action == MotionEvent.ACTION_UP) {
             if (!state.paused && !state.gameOver && !state.levelTransition) {
-                if (motionEvent.getY() < screenY - screenY / 8f) {
-                    if (playerShip.tryShoot()) {
-                        shootBullets();
+                // Check if releasing a charged ultimate laser
+                if (isHoldingForUltimate && playerShip.releaseCharge()) {
+                    shootUltimate();
+                    isHoldingForUltimate = false;
+                } else {
+                    isHoldingForUltimate = false;
+                    playerShip.cancelCharge();
+                    // Normal shot
+                    if (motionEvent.getY() < screenY - screenY / 8f) {
+                        if (playerShip.tryShoot()) {
+                            shootBullets();
+                        }
                     }
                 }
+            } else {
+                isHoldingForUltimate = false;
+                playerShip.cancelCharge();
             }
         }
 
@@ -690,13 +795,24 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             playerBullets.add(b);
         }
 
-        soundPool.play(shootID, 1, 1, 0, 0, 1);
+        playSfx(shootID);
+    }
+
+    private void shootUltimate() {
+        float shipCenterX = playerShip.getX() + playerShip.getLength_EGG() / 2;
+        float shipTopY = screenY - playerShip.getHeight_EGG();
+        Bullet b = Bullet.createUltimate(screenY);
+        b.shoot(shipCenterX, shipTopY, Bullet.UP);
+        playerBullets.add(b);
+        playSfx(shootID);
+        triggerShake(10f, 200);
+        particles.addBanner("ULTIMATE LASER!", Color.rgb(255, 0, 255),
+                screenX, screenY, screenY / 12f);
     }
 
     private Bullet createPlayerBullet() {
-        if (playerShip.hasUltimateLaserSkill()) {
-            return Bullet.createUltimate(screenY);
-        } else if (playerShip.isBigLaser()) {
+        // Ultimate laser is fired only via hold-to-charge (shootUltimate), not here
+        if (playerShip.isBigLaser()) {
             return Bullet.createBigLaser(screenY);
         } else if (playerShip.isPiercingShot()) {
             return Bullet.createPiercing(screenY);
