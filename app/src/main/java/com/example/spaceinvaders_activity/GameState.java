@@ -134,11 +134,8 @@ public class GameState {
 
     public void advanceLevel() {
         currentLevel++;
-        if (currentLevel > GameConfig.MAX_LEVEL) {
-            levelConfig = GameConfig.getEndlessLevel(currentLevel).applyDifficulty(difficulty);
-        } else {
-            levelConfig = GameConfig.getLevel(currentLevel).applyDifficulty(difficulty);
-        }
+        // getLevel handles all levels (1-100 procedural, 101+ endless)
+        levelConfig = GameConfig.getLevel(currentLevel).applyDifficulty(difficulty);
         levelStartTime = System.currentTimeMillis();
         levelTransition = true;
         levelTransitionStart = System.currentTimeMillis();
