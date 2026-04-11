@@ -9,6 +9,9 @@ import java.util.List;
  */
 public class GameState {
 
+    // Difficulty
+    public int difficulty = GameConfig.DIFF_NORMAL;
+
     // Level progression
     public int currentLevel = 1;
     public GameConfig levelConfig;
@@ -45,6 +48,10 @@ public class GameState {
     public boolean isFirstRun = true;
     public boolean bombUsedThisLevel = false;
 
+    // Tracking for achievements
+    public int powerupsCollectedThisGame = 0;
+    public int bombKillCount = 0; // kills from last bomb use
+
     // Power-up: freeze enemies
     public boolean enemiesFrozen = false;
     public long freezeEndTime = 0;
@@ -58,15 +65,24 @@ public class GameState {
     }
 
     public void startNewGame(List<Integer> skills, int extraLives) {
+        startNewGame(skills, extraLives, GameConfig.DIFF_NORMAL);
+    }
+
+    public void startNewGame(List<Integer> skills, int extraLives, int difficulty) {
+        this.difficulty = difficulty;
         currentLevel = 1;
         score = 0;
         lives = 3 + extraLives;
+        if (difficulty == GameConfig.DIFF_EASY) lives += 2;
+        if (difficulty == GameConfig.DIFF_HARD) lives = Math.max(1, lives - 1);
         startingLives = lives;
         xpEarned = 0;
         enemiesKilled = 0;
         bossesKilled = 0;
         comboCount = 0;
         maxCombo = 0;
+        powerupsCollectedThisGame = 0;
+        bombKillCount = 0;
         gameStartTime = System.currentTimeMillis();
         levelStartTime = gameStartTime;
         gameOver = false;
@@ -74,15 +90,15 @@ public class GameState {
         levelTransition = false;
         bombUsedThisLevel = false;
         activeSkills = skills != null ? skills : new ArrayList<>();
-        levelConfig = GameConfig.getLevel(1);
+        levelConfig = GameConfig.getLevel(1).applyDifficulty(difficulty);
     }
 
     public void advanceLevel() {
         currentLevel++;
         if (currentLevel > GameConfig.MAX_LEVEL) {
-            levelConfig = GameConfig.getEndlessLevel(currentLevel);
+            levelConfig = GameConfig.getEndlessLevel(currentLevel).applyDifficulty(difficulty);
         } else {
-            levelConfig = GameConfig.getLevel(currentLevel);
+            levelConfig = GameConfig.getLevel(currentLevel).applyDifficulty(difficulty);
         }
         levelStartTime = System.currentTimeMillis();
         levelTransition = true;

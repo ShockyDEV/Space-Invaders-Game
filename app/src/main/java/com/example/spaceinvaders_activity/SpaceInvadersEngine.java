@@ -40,9 +40,8 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private List<Bullet> playerBullets = new ArrayList<>();
     private Bullet[] invadersBullets = new Bullet[200];
     private int nextBullet;
-    private Invader[] invaders = new Invader[80];
+    private ArrayList<Invader> invaders = new ArrayList<>();
     private Invader boss = null;
-    private int numInvaders = 0;
     private DefenceBrick[] bricks = new DefenceBrick[400];
     private int numBricks;
     private List<PowerUp> powerUps = new ArrayList<>();
@@ -52,6 +51,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private GameData gameData;
     private HUDRenderer hudRenderer;
     private ParticleEffect particles;
+    private AchievementManager achievementManager;
 
     // Sound
     private SoundPool soundPool;
@@ -102,6 +102,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         gameData = new GameData(context);
         hudRenderer = new HUDRenderer(screenX, screenY);
         particles = new ParticleEffect();
+        achievementManager = new AchievementManager(gameData);
 
         // Load graphics
         brickBitmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.brick);
@@ -171,11 +172,15 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
     // Called by activity to start a new game with selected skills
     public void startNewGame(List<Integer> activeSkills) {
+        startNewGame(activeSkills, GameConfig.DIFF_NORMAL);
+    }
+
+    public void startNewGame(List<Integer> activeSkills, int difficulty) {
         int extraLives = 0;
         if (activeSkills != null && activeSkills.contains(Skill.SHIELD)) {
             extraLives = 2;
         }
-        state.startNewGame(activeSkills, extraLives);
+        state.startNewGame(activeSkills, extraLives, difficulty);
         prepareLevel();
 
         // Apply skills to player
@@ -204,13 +209,14 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         powerUps.clear();
         particles.clear();
 
-        // Create invaders from level config
-        numInvaders = 0;
+        // Create invaders from level config with enemy type assignment
+        invaders.clear();
         for (int column = 0; column < config.numColumns; column++) {
             for (int row = 0; row < config.numRows; row++) {
-                invaders[numInvaders] = new Invader(context, row, column, screenX, screenY,
-                        config.invaderBaseSpeed, config.shotChance);
-                numInvaders++;
+                int enemyType = config.getEnemyType(row, config.numRows);
+                Invader inv = new Invader(context, row, column, screenX, screenY,
+                        config.invaderBaseSpeed, config.shotChance, enemyType);
+                invaders.add(inv);
             }
         }
 
@@ -298,30 +304,38 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         boolean reachedBottom = false;
         int aliveCount = 0;
 
-        for (int i = 0; i < numInvaders; i++) {
-            if (invaders[i].getVisibility()) {
+        for (Invader inv : invaders) {
+            if (inv.getVisibility()) {
                 aliveCount++;
                 if (state.enemiesFrozen) {
-                    invaders[i].freeze(100);
+                    inv.freeze(100);
                 }
-                invaders[i].update(fps);
+
+                // Update kamikaze target
+                if (inv.isKamikaze()) {
+                    inv.setTargetPlayerX(playerShip.getX() + playerShip.getLength_EGG() / 2);
+                }
+
+                inv.update(fps);
 
                 // Enemy shooting
-                if (invaders[i].takeAim(playerShip.getX(), playerShip.getLength_EGG())) {
+                if (inv.takeAim(playerShip.getX(), playerShip.getLength_EGG())) {
                     if (invadersBullets[nextBullet] != null) {
                         invadersBullets[nextBullet].shoot(
-                                invaders[i].getX() + invaders[i].getLength() / 2,
-                                invaders[i].getY(), Bullet.DOWN);
+                                inv.getX() + inv.getLength() / 2,
+                                inv.getY(), Bullet.DOWN);
                     }
                     nextBullet = (nextBullet + 1) % state.levelConfig.maxInvaderBullets;
                 }
 
-                // Wall collision
-                if (invaders[i].getX() > screenX - invaders[i].getLength() || invaders[i].getX() < 0) {
-                    hitWall = true;
+                // Wall collision (skip for kamikaze, they move freely)
+                if (!inv.isKamikaze()) {
+                    if (inv.getX() > screenX - inv.getLength() || inv.getX() < 0) {
+                        hitWall = true;
+                    }
                 }
                 // Reached bottom
-                if (invaders[i].getY() > screenY - screenY / 10f) {
+                if (inv.getY() > screenY - screenY / 10f) {
                     reachedBottom = true;
                 }
             }
@@ -348,8 +362,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
         // Wall hit -> drop and reverse
         if (hitWall && (System.nanoTime() - lastDropDownTime) > dropDownCooldown) {
-            for (int i = 0; i < numInvaders; i++) {
-                invaders[i].dropDownAndReverse();
+            for (Invader inv : invaders) {
+                if (!inv.isKamikaze()) { // Kamikaze don't follow formation
+                    inv.dropDownAndReverse();
+                }
             }
             lastDropDownTime = System.nanoTime();
         }
@@ -385,7 +401,12 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         }
     }
 
+    // Temporary list for splitter children to spawn after iteration
+    private List<Invader> pendingSplitterChildren = new ArrayList<>();
+
     private void updatePlayerBullets() {
+        pendingSplitterChildren.clear();
+
         Iterator<Bullet> it = playerBullets.iterator();
         while (it.hasNext()) {
             Bullet b = it.next();
@@ -399,24 +420,55 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             boolean hitSomething = false;
 
             // Check vs invaders
-            for (int j = 0; j < numInvaders; j++) {
-                if (invaders[j].getVisibility() && RectF.intersects(b.getRect(), invaders[j].getRect())) {
-                    invaders[j].setInvisible();
+            for (Invader inv : invaders) {
+                if (inv.getVisibility() && RectF.intersects(b.getRect(), inv.getRect())) {
+                    // Shielded enemy: absorb first hit
+                    if (inv.hasShield()) {
+                        inv.hitShield();
+                        playSfx(damageShelterID);
+                        particles.addBanner("SHIELD BREAK!", Color.rgb(100, 200, 255),
+                                screenX, screenY, screenY / 18f);
+                        if (!b.isPiercing()) hitSomething = true;
+                        break;
+                    }
+
+                    // Tank type: has health > 1
+                    if (inv.getEnemyType() == Invader.TYPE_TANK && inv.getHealth() > 1) {
+                        inv.takeDamage(b.getDamage());
+                        playSfx(invaderExplodeID);
+                        if (inv.getHealth() <= 0) {
+                            inv.setInvisible();
+                        } else {
+                            if (!b.isPiercing()) hitSomething = true;
+                            break;
+                        }
+                    } else {
+                        inv.setInvisible();
+                    }
+
                     playSfx(invaderExplodeID);
 
-                    int points = invaders[j].getPointValue();
+                    int points = inv.getPointValue();
                     state.registerKill(points, playerShip.getScoreMultiplier());
 
-                    // Particle explosion
-                    float ex = invaders[j].getX() + invaders[j].getLength() / 2;
-                    float ey = invaders[j].getY() + invaders[j].getHeight() / 2;
+                    float ex = inv.getX() + inv.getLength() / 2;
+                    float ey = inv.getY() + inv.getHeight() / 2;
                     particles.addExplosion(ex, ey, Color.rgb(255, 150, 50), 12);
 
-                    // Score popup
                     int displayPoints = points * state.getScoreMultiplier() * playerShip.getScoreMultiplier();
                     String popupText = "+" + displayPoints;
                     if (state.comboCount > 1) popupText += " x" + state.comboCount;
                     particles.addScorePopup(ex, ey, popupText, Color.YELLOW, screenY / 30f);
+
+                    // Splitter: queue children to spawn
+                    if (inv.isSplitter()) {
+                        pendingSplitterChildren.add(
+                                Invader.createSplitterChild(context, ex, ey, screenX, screenY,
+                                        state.levelConfig.invaderBaseSpeed, true));
+                        pendingSplitterChildren.add(
+                                Invader.createSplitterChild(context, ex, ey, screenX, screenY,
+                                        state.levelConfig.invaderBaseSpeed, false));
+                    }
 
                     // Power-up drop
                     if (PowerUp.shouldDrop()) {
@@ -446,6 +498,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                     particles.addBanner("BOSS DEFEATED!", Color.rgb(255, 215, 0),
                             screenX, screenY, screenY / 12f);
                     triggerShake(20f, 500);
+                    checkAchievements();
                 }
 
                 if (!b.isPiercing()) hitSomething = true;
@@ -466,6 +519,13 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             if (hitSomething) {
                 it.remove();
             }
+        }
+
+        // Spawn splitter children outside the iteration
+        if (!pendingSplitterChildren.isEmpty()) {
+            invaders.addAll(pendingSplitterChildren);
+            particles.addBanner("SPLITTER!", Color.rgb(50, 255, 50),
+                    screenX, screenY, screenY / 18f);
         }
     }
 
@@ -532,6 +592,8 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
     private void applyPowerUp(PowerUp pu) {
         particles.addBanner(pu.getName(), pu.getColor(), screenX, screenY, screenY / 15f);
+        state.powerupsCollectedThisGame++;
+        gameData.addPowerupCollected();
 
         switch (pu.getType()) {
             case PowerUp.HEALTH:
@@ -563,6 +625,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             state.xpEarned += GameData.XP_BONUS_NO_DEATHS;
         }
 
+        // Check achievements
+        checkAchievements();
+
         // Advance and prepare next level
         state.advanceLevel();
         prepareLevel();
@@ -571,6 +636,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private void endGame() {
         state.gameOver = true;
         state.paused = true;
+
+        // Check achievements before saving
+        checkAchievements();
 
         // Save game data
         boolean newHighScore = gameData.updateHighScore(state.score);
@@ -587,25 +655,42 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         }
     }
 
+    /** Checks achievements and shows banners for newly unlocked ones */
+    private void checkAchievements() {
+        List<AchievementManager.Achievement> newlyUnlocked =
+                achievementManager.checkAndUnlock(state, gameData);
+        for (AchievementManager.Achievement a : newlyUnlocked) {
+            particles.addBanner("ACHIEVEMENT: " + a.name, Color.rgb(255, 215, 0),
+                    screenX, screenY, screenY / 15f);
+            state.xpEarned += a.xpReward;
+        }
+    }
+
     // Bomb skill - clear all visible enemies
     public void useBomb() {
         if (!playerShip.hasBombSkill() || !playerShip.isBombAvailable()) return;
         playerShip.useBomb();
         state.bombUsedThisLevel = true;
 
-        for (int i = 0; i < numInvaders; i++) {
-            if (invaders[i].getVisibility()) {
-                invaders[i].setInvisible();
-                float ex = invaders[i].getX() + invaders[i].getLength() / 2;
-                float ey = invaders[i].getY() + invaders[i].getHeight() / 2;
+        int bombKills = 0;
+        for (Invader inv : invaders) {
+            if (inv.getVisibility()) {
+                inv.setInvisible();
+                float ex = inv.getX() + inv.getLength() / 2;
+                float ey = inv.getY() + inv.getHeight() / 2;
                 particles.addExplosion(ex, ey, Color.rgb(255, 100, 50), 8);
-                state.registerKill(invaders[i].getPointValue(), playerShip.getScoreMultiplier());
+                state.registerKill(inv.getPointValue(), playerShip.getScoreMultiplier());
+                bombKills++;
             }
         }
+        state.bombKillCount = bombKills;
 
         particles.addBanner("ORBITAL BOMB!", Color.RED, screenX, screenY, screenY / 10f);
         playSfx(playerExplodeID);
         triggerShake(15f, 400);
+
+        // Check bomb master achievement
+        checkAchievements();
     }
 
     // ==================== DRAW ====================
@@ -631,11 +716,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         }
 
         // Invaders
-        for (int i = 0; i < numInvaders; i++) {
-            if (invaders[i].getVisibility()) {
-                canvas.drawBitmap(invaders[i].getBitmap(),
-                        invaders[i].getX(), invaders[i].getY(), paint);
-                invaders[i].drawEffects(canvas, paint);
+        for (Invader inv : invaders) {
+            if (inv.getVisibility()) {
+                canvas.drawBitmap(inv.getBitmap(), inv.getX(), inv.getY(), paint);
+                inv.drawEffects(canvas, paint);
             }
         }
 

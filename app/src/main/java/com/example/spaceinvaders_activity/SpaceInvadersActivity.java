@@ -12,6 +12,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -100,6 +102,10 @@ public class SpaceInvadersActivity extends Activity {
             Button statsBtn = createMenuButton("STATS");
             layout.addView(statsBtn);
 
+            // Achievements button
+            Button achieveBtn = createMenuButton("ACHIEVEMENTS");
+            layout.addView(achieveBtn);
+
             // Settings button
             Button settingsBtn = createMenuButton("SETTINGS");
             layout.addView(settingsBtn);
@@ -126,6 +132,11 @@ public class SpaceInvadersActivity extends Activity {
             statsBtn.setOnClickListener(v -> {
                 dialog.dismiss();
                 showStats();
+            });
+
+            achieveBtn.setOnClickListener(v -> {
+                dialog.dismiss();
+                showAchievements();
             });
 
             settingsBtn.setOnClickListener(v -> {
@@ -222,6 +233,38 @@ public class SpaceInvadersActivity extends Activity {
             scroll.addView(skillList);
             layout.addView(scroll);
 
+            // Difficulty selector
+            TextView diffLabel = new TextView(this);
+            diffLabel.setText("Difficulty:");
+            diffLabel.setTextSize(16);
+            diffLabel.setTypeface(Typeface.DEFAULT_BOLD);
+            diffLabel.setPadding(0, 20, 0, 5);
+            layout.addView(diffLabel);
+
+            RadioGroup diffGroup = new RadioGroup(this);
+            diffGroup.setOrientation(RadioGroup.HORIZONTAL);
+
+            RadioButton easyRb = new RadioButton(this);
+            easyRb.setText("Easy");
+            easyRb.setTextSize(13);
+            easyRb.setId(View.generateViewId());
+            diffGroup.addView(easyRb);
+
+            RadioButton normalRb = new RadioButton(this);
+            normalRb.setText("Normal");
+            normalRb.setTextSize(13);
+            normalRb.setChecked(true);
+            normalRb.setId(View.generateViewId());
+            diffGroup.addView(normalRb);
+
+            RadioButton hardRb = new RadioButton(this);
+            hardRb.setText("Hard");
+            hardRb.setTextSize(13);
+            hardRb.setId(View.generateViewId());
+            diffGroup.addView(hardRb);
+
+            layout.addView(diffGroup);
+
             builder.setView(layout);
             builder.setPositiveButton("START GAME", (dialog, which) -> {
                 List<Integer> selectedSkills = new ArrayList<>();
@@ -230,7 +273,10 @@ public class SpaceInvadersActivity extends Activity {
                         selectedSkills.add((Integer) cb.getTag());
                     }
                 }
-                startGameWithSkills(selectedSkills);
+                int difficulty = GameConfig.DIFF_NORMAL;
+                if (easyRb.isChecked()) difficulty = GameConfig.DIFF_EASY;
+                if (hardRb.isChecked()) difficulty = GameConfig.DIFF_HARD;
+                startGameWithSkills(selectedSkills, difficulty);
             });
 
             builder.setNegativeButton("BACK", (dialog, which) -> showMainMenu());
@@ -242,7 +288,11 @@ public class SpaceInvadersActivity extends Activity {
     }
 
     private void startGameWithSkills(List<Integer> skills) {
-        spaceInvadersEngine.startNewGame(skills);
+        spaceInvadersEngine.startNewGame(skills, GameConfig.DIFF_NORMAL);
+    }
+
+    private void startGameWithSkills(List<Integer> skills, int difficulty) {
+        spaceInvadersEngine.startNewGame(skills, difficulty);
     }
 
     // ==================== SKILL TREE ====================
@@ -476,6 +526,84 @@ public class SpaceInvadersActivity extends Activity {
             }
 
             builder.setView(layout);
+            builder.setPositiveButton("BACK", (dialog, which) -> showMainMenu());
+
+            AlertDialog dialog = builder.create();
+            dialog.setCancelable(false);
+            dialog.show();
+        });
+    }
+
+    // ==================== ACHIEVEMENTS ====================
+
+    private void showAchievements() {
+        runOnUiThread(() -> {
+            GameData data = spaceInvadersEngine.getGameData();
+            List<AchievementManager.Achievement> allAchievements = AchievementManager.getAllAchievements();
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+            ScrollView scroll = new ScrollView(this);
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setPadding(50, 30, 50, 30);
+
+            TextView title = new TextView(this);
+            title.setText("ACHIEVEMENTS");
+            title.setTextSize(22);
+            title.setTypeface(Typeface.DEFAULT_BOLD);
+            title.setGravity(Gravity.CENTER);
+            title.setPadding(0, 0, 0, 10);
+            layout.addView(title);
+
+            int unlocked = data.getUnlockedAchievementCount();
+            TextView progressText = new TextView(this);
+            progressText.setText(String.format(Locale.getDefault(),
+                    "Unlocked: %d / %d", unlocked, allAchievements.size()));
+            progressText.setTextSize(14);
+            progressText.setGravity(Gravity.CENTER);
+            progressText.setPadding(0, 0, 0, 20);
+            layout.addView(progressText);
+
+            for (AchievementManager.Achievement a : allAchievements) {
+                boolean isUnlocked = data.isAchievementUnlocked(a.id);
+
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.VERTICAL);
+                row.setPadding(15, 15, 15, 15);
+
+                TextView nameText = new TextView(this);
+                String status = isUnlocked ? " \u2705" : " \uD83D\uDD12";
+                nameText.setText(a.name + status);
+                nameText.setTextSize(16);
+                nameText.setTypeface(Typeface.DEFAULT_BOLD);
+
+                TextView descText = new TextView(this);
+                descText.setText(a.description + " (+" + a.xpReward + " XP)");
+                descText.setTextSize(13);
+                descText.setPadding(0, 5, 0, 10);
+
+                if (!isUnlocked) {
+                    nameText.setAlpha(0.5f);
+                    descText.setAlpha(0.5f);
+                } else {
+                    nameText.setTextColor(Color.rgb(255, 215, 0));
+                }
+
+                row.addView(nameText);
+                row.addView(descText);
+
+                View divider = new View(this);
+                divider.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 2));
+                divider.setBackgroundColor(Color.GRAY);
+
+                layout.addView(row);
+                layout.addView(divider);
+            }
+
+            scroll.addView(layout);
+            builder.setView(scroll);
             builder.setPositiveButton("BACK", (dialog, which) -> showMainMenu());
 
             AlertDialog dialog = builder.create();
