@@ -113,38 +113,83 @@ public class Bullet {
         return (heading == UP && y + height < 0) || (heading == DOWN && y > screenY);
     }
 
+    public int getColor() { return color; }
+    public float getCenterX() { return x + width / 2f; }
+    public float getCenterY() { return y + height / 2f; }
+    public int getWidth() { return width; }
+
     // Enhanced drawing with glow effects
     public void draw(Canvas canvas, Paint paint, boolean isPlayerBullet) {
+        float pulse = 0.7f + 0.3f * (float) Math.sin(glowPhase);
+        float cx = x + width / 2f;
+
         if (isUltimate) {
-            // Ultimate beam with pulsing glow
-            float pulse = 0.7f + 0.3f * (float) Math.sin(glowPhase);
+            // Ultimate beam: multi-layer pulsing beam with side flares
+            // Outermost glow
+            paint.setColor(Color.argb((int) (30 * pulse), 200, 50, 255));
+            canvas.drawRect(x - 25, y, x + width + 25, y + height, paint);
+            // Mid glow
             paint.setColor(Color.argb((int) (60 * pulse), 255, 100, 255));
             canvas.drawRect(x - 15, y, x + width + 15, y + height, paint);
+            // Inner glow
             paint.setColor(Color.argb((int) (120 * pulse), 255, 50, 255));
             canvas.drawRect(x - 5, y, x + width + 5, y + height, paint);
+            // Core (white-pink)
             paint.setColor(Color.argb(255, 255, 200, 255));
             canvas.drawRect(rect, paint);
-        } else if (isBigLaser) {
-            // Big laser with orange glow
-            float pulse = 0.8f + 0.2f * (float) Math.sin(glowPhase);
-            paint.setColor(Color.argb((int) (80 * pulse), 255, 150, 0));
-            canvas.drawRect(x - 8, y, x + width + 8, y + height, paint);
-            paint.setColor(color);
-            canvas.drawRect(rect, paint);
-        } else if (isPiercing) {
-            // Piercing bullet with teal trail
-            paint.setColor(Color.argb(60, 0, 255, 200));
-            canvas.drawRect(x - 3, y, x + width + 3, y + height * 1.3f, paint);
-            paint.setColor(color);
-            canvas.drawRect(rect, paint);
-        } else {
-            // Standard bullet
-            if (isPlayerBullet) {
-                paint.setColor(Color.GREEN);
-            } else {
-                paint.setColor(Color.RED);
+            // Energy flares along the beam
+            for (int i = 0; i < 5; i++) {
+                float flareY = y + (i * height / 5f) + (glowPhase * 30) % (height / 5f);
+                float flareSize = 8 + 6 * (float) Math.sin(glowPhase + i * 1.5f);
+                paint.setColor(Color.argb((int) (100 * pulse), 255, 180, 255));
+                canvas.drawCircle(cx, flareY, flareSize, paint);
             }
+
+        } else if (isBigLaser) {
+            // Big laser with layered orange glow
+            paint.setColor(Color.argb((int) (40 * pulse), 255, 200, 0));
+            canvas.drawRect(x - 12, y - 5, x + width + 12, y + height + 5, paint);
+            paint.setColor(Color.argb((int) (80 * pulse), 255, 150, 0));
+            canvas.drawRect(x - 6, y, x + width + 6, y + height, paint);
+            // Core
+            paint.setColor(color);
             canvas.drawRect(rect, paint);
+            // Hot center line
+            paint.setColor(Color.argb(200, 255, 255, 150));
+            canvas.drawRect(cx - 2, y, cx + 2, y + height, paint);
+
+        } else if (isPiercing) {
+            // Piercing: teal energy bolt with trailing glow
+            float trailLen = height * 0.6f;
+            paint.setColor(Color.argb(30, 0, 255, 200));
+            canvas.drawRect(x - 5, y, x + width + 5, y + height + trailLen, paint);
+            paint.setColor(Color.argb(70, 0, 255, 200));
+            canvas.drawRect(x - 2, y, x + width + 2, y + height + trailLen * 0.5f, paint);
+            // Core
+            paint.setColor(color);
+            canvas.drawRect(rect, paint);
+            // Bright tip
+            paint.setColor(Color.argb(220, 200, 255, 255));
+            canvas.drawCircle(cx, y, width * 0.6f, paint);
+
+        } else {
+            // Standard bullet with subtle glow
+            if (isPlayerBullet) {
+                // Green glow
+                paint.setColor(Color.argb((int) (40 * pulse), 50, 255, 50));
+                canvas.drawRect(x - 3, y - 3, x + width + 3, y + height + 3, paint);
+                paint.setColor(Color.argb(220, 100, 255, 100));
+                canvas.drawRect(rect, paint);
+                // Bright core
+                paint.setColor(Color.argb(180, 200, 255, 200));
+                canvas.drawRect(cx - 1, y, cx + 1, y + height, paint);
+            } else {
+                // Red enemy bullet with glow
+                paint.setColor(Color.argb((int) (50 * pulse), 255, 50, 50));
+                canvas.drawRect(x - 2, y - 2, x + width + 2, y + height + 2, paint);
+                paint.setColor(Color.argb(230, 255, 80, 60));
+                canvas.drawRect(rect, paint);
+            }
         }
     }
 }

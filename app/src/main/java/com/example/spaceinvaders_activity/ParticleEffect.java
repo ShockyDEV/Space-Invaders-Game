@@ -22,15 +22,44 @@ public class ParticleEffect {
         float life; // 0 to 1
         int color;
         float size;
+        int type; // 0=circle, 1=spark(line), 2=debris(square), 3=sparkle(diamond)
+        float rotation;
+        float rotSpeed;
+        float gravity;
 
         Particle(float x, float y, int color, float size) {
+            this(x, y, color, size, 0);
+        }
+
+        Particle(float x, float y, int color, float size, int type) {
             this.x = x;
             this.y = y;
             this.color = color;
             this.size = size;
+            this.type = type;
             this.life = 1.0f;
+            this.rotation = random.nextFloat() * 360f;
+            this.rotSpeed = (random.nextFloat() - 0.5f) * 400f;
+            this.gravity = 0;
             float angle = random.nextFloat() * 360f;
-            float speed = 100f + random.nextFloat() * 300f;
+            float speed;
+            switch (type) {
+                case 1: // Spark: fast, narrow spread
+                    speed = 200f + random.nextFloat() * 500f;
+                    this.gravity = 150f;
+                    break;
+                case 2: // Debris: medium speed, heavy gravity
+                    speed = 80f + random.nextFloat() * 200f;
+                    this.gravity = 300f;
+                    break;
+                case 3: // Sparkle: slow, floaty
+                    speed = 30f + random.nextFloat() * 100f;
+                    this.gravity = -20f; // Float up
+                    break;
+                default: // Circle: standard
+                    speed = 100f + random.nextFloat() * 300f;
+                    break;
+            }
             this.vx = (float) Math.cos(Math.toRadians(angle)) * speed;
             this.vy = (float) Math.sin(Math.toRadians(angle)) * speed;
         }
@@ -39,9 +68,12 @@ public class ParticleEffect {
             if (fps <= 0) return;
             x += vx / fps;
             y += vy / fps;
+            vy += gravity / fps;
             vx *= 0.96f;
             vy *= 0.96f;
-            life -= 2.0f / fps; // Lasts ~0.5 seconds
+            rotation += rotSpeed / fps;
+            float decayRate = (type == 3) ? 1.0f : (type == 1 ? 3.0f : 2.0f);
+            life -= decayRate / fps;
         }
 
         void draw(Canvas canvas, Paint paint) {
@@ -50,7 +82,54 @@ public class ParticleEffect {
             int g = Color.green(color);
             int b = Color.blue(color);
             paint.setColor(Color.argb(alpha, r, g, b));
-            canvas.drawCircle(x, y, size * life, paint);
+
+            switch (type) {
+                case 1: // Spark: draw as a line/streak
+                    float len = size * 3 * life;
+                    float dx = vx * 0.01f;
+                    float dy = vy * 0.01f;
+                    paint.setStrokeWidth(Math.max(1, size * 0.5f * life));
+                    canvas.drawLine(x, y, x - dx * len, y - dy * len, paint);
+                    paint.setStrokeWidth(1);
+                    // Bright head
+                    paint.setColor(Color.argb(alpha, 255, 255, Math.min(255, b + 100)));
+                    canvas.drawCircle(x, y, size * 0.4f * life, paint);
+                    break;
+
+                case 2: // Debris: rotating square
+                    canvas.save();
+                    canvas.rotate(rotation, x, y);
+                    float halfSize = size * life;
+                    canvas.drawRect(x - halfSize, y - halfSize,
+                            x + halfSize, y + halfSize, paint);
+                    canvas.restore();
+                    break;
+
+                case 3: // Sparkle: diamond shape with glow
+                    float s = size * (0.5f + 0.5f * (float) Math.sin(life * 8));
+                    canvas.save();
+                    canvas.rotate(rotation, x, y);
+                    // Glow
+                    paint.setColor(Color.argb(alpha / 3, r, g, b));
+                    canvas.drawCircle(x, y, s * 2, paint);
+                    // Diamond
+                    paint.setColor(Color.argb(alpha, r, g, b));
+                    float[] pts = {x, y - s, x + s, y, x, y + s, x - s, y, x, y - s};
+                    for (int i = 0; i < pts.length - 2; i += 2) {
+                        canvas.drawLine(pts[i], pts[i + 1], pts[i + 2], pts[i + 3], paint);
+                    }
+                    canvas.restore();
+                    break;
+
+                default: // Circle with glow
+                    // Outer glow
+                    paint.setColor(Color.argb(alpha / 3, r, g, b));
+                    canvas.drawCircle(x, y, size * life * 2, paint);
+                    // Core
+                    paint.setColor(Color.argb(alpha, r, g, b));
+                    canvas.drawCircle(x, y, size * life, paint);
+                    break;
+            }
         }
 
         boolean isDead() {
@@ -152,21 +231,69 @@ public class ParticleEffect {
     private List<Banner> banners = new ArrayList<>();
 
     public void addExplosion(float x, float y, int color, int count) {
+        // Mix of circles and sparks for richer look
         for (int i = 0; i < count; i++) {
             float size = 3f + random.nextFloat() * 5f;
-            // Vary color slightly
             int r = Math.min(255, Color.red(color) + random.nextInt(40) - 20);
             int g = Math.min(255, Color.green(color) + random.nextInt(40) - 20);
             int b = Math.min(255, Color.blue(color) + random.nextInt(40) - 20);
             int variedColor = Color.rgb(Math.max(0, r), Math.max(0, g), Math.max(0, b));
-            particles.add(new Particle(x, y, variedColor, size));
+            int type = (i % 3 == 0) ? 1 : 0; // Every 3rd particle is a spark
+            particles.add(new Particle(x, y, variedColor, size, type));
         }
     }
 
     public void addBigExplosion(float x, float y) {
+        // Core flash particles
+        addExplosion(x, y, Color.rgb(255, 255, 200), 8);
+        // Fire particles
         addExplosion(x, y, Color.rgb(255, 200, 50), 20);
         addExplosion(x, y, Color.rgb(255, 100, 0), 15);
-        addExplosion(x, y, Color.rgb(255, 50, 50), 10);
+        // Smoke debris
+        for (int i = 0; i < 8; i++) {
+            float size = 4f + random.nextFloat() * 6f;
+            particles.add(new Particle(x, y, Color.rgb(100, 80, 60), size, 2));
+        }
+        // Sparks
+        for (int i = 0; i < 12; i++) {
+            float size = 2f + random.nextFloat() * 3f;
+            particles.add(new Particle(x, y, Color.rgb(255, 255, 100), size, 1));
+        }
+    }
+
+    /** Sparkle burst for power-up collection */
+    public void addSparkleBurst(float x, float y, int color, int count) {
+        for (int i = 0; i < count; i++) {
+            float size = 3f + random.nextFloat() * 5f;
+            int r = Math.min(255, Color.red(color) + random.nextInt(60) - 30);
+            int g = Math.min(255, Color.green(color) + random.nextInt(60) - 30);
+            int b = Math.min(255, Color.blue(color) + random.nextInt(60) - 30);
+            int variedColor = Color.rgb(Math.max(0, r), Math.max(0, g), Math.max(0, b));
+            particles.add(new Particle(x, y, variedColor, size, 3));
+        }
+    }
+
+    /** Debris explosion (for shielded enemy shield break, etc.) */
+    public void addDebris(float x, float y, int color, int count) {
+        for (int i = 0; i < count; i++) {
+            float size = 2f + random.nextFloat() * 4f;
+            particles.add(new Particle(x, y, color, size, 2));
+        }
+    }
+
+    /** Directional spark shower (for bullet impacts) */
+    public void addImpactSparks(float x, float y, int color, int count, float directionDeg) {
+        for (int i = 0; i < count; i++) {
+            float size = 1.5f + random.nextFloat() * 2.5f;
+            Particle p = new Particle(x, y, color, size, 1);
+            // Override velocity to spray in a cone around direction
+            float spread = 40f; // degrees
+            float angle = directionDeg + (random.nextFloat() - 0.5f) * spread;
+            float speed = 150f + random.nextFloat() * 350f;
+            p.vx = (float) Math.cos(Math.toRadians(angle)) * speed;
+            p.vy = (float) Math.sin(Math.toRadians(angle)) * speed;
+            particles.add(p);
+        }
     }
 
     public void addScorePopup(float x, float y, String text, int color, float textSize) {

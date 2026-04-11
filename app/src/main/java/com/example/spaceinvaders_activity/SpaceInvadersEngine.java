@@ -52,6 +52,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private HUDRenderer hudRenderer;
     private ParticleEffect particles;
     private AchievementManager achievementManager;
+    private VFXManager vfx;
 
     // Sound
     private SoundPool soundPool;
@@ -103,6 +104,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         hudRenderer = new HUDRenderer(screenX, screenY);
         particles = new ParticleEffect();
         achievementManager = new AchievementManager(gameData);
+        vfx = new VFXManager(screenX, screenY);
 
         // Load graphics
         brickBitmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.brick);
@@ -412,9 +414,24 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Update power-ups
         updatePowerUps();
 
-        // Update particles and screen shake
+        // Update particles, VFX, and screen shake
         particles.update(fps);
+        vfx.update(fps);
+        vfx.setComboIntensity(state.comboCount);
         updateShake();
+
+        // Ship thruster
+        if (!state.paused) {
+            float shipCX = playerShip.getX() + playerShip.getLength_EGG() / 2;
+            float shipBottom = screenY;
+            vfx.emitThruster(playerShip.getX(), shipCX, shipBottom);
+        }
+
+        // Bullet trails
+        for (Bullet b : playerBullets) {
+            vfx.addBulletTrail(b.getCenterX(), b.getCenterY(),
+                    b.getColor(), b.getWidth(), 8);
+        }
 
         // Check level complete
         if (aliveCount == 0) {
@@ -449,6 +466,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                         playSfx(damageShelterID);
                         particles.addBanner("SHIELD BREAK!", Color.rgb(100, 200, 255),
                                 screenX, screenY, screenY / 18f);
+                        // VFX: blue debris + shockwave for shield break
+                        float sx = inv.getX() + inv.getLength() / 2;
+                        float sy = inv.getY() + inv.getHeight() / 2;
+                        particles.addDebris(sx, sy, Color.rgb(80, 160, 255), 10);
+                        vfx.addShockwave(sx, sy, 60f, Color.rgb(100, 200, 255), 3f);
                         if (!b.isPiercing()) hitSomething = true;
                         break;
                     }
@@ -474,7 +496,44 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
                     float ex = inv.getX() + inv.getLength() / 2;
                     float ey = inv.getY() + inv.getHeight() / 2;
-                    particles.addExplosion(ex, ey, Color.rgb(255, 150, 50), 12);
+
+                    // Type-specific death effects
+                    switch (inv.getEnemyType()) {
+                        case Invader.TYPE_KAMIKAZE:
+                            // Big fiery explosion with shockwave
+                            particles.addBigExplosion(ex, ey);
+                            vfx.addShockwave(ex, ey, 100f, Color.rgb(255, 80, 0), 4f);
+                            vfx.triggerScreenFlash(Color.rgb(255, 100, 0), 0.15f);
+                            break;
+                        case Invader.TYPE_SPLITTER:
+                            // Green energy burst
+                            particles.addSparkleBurst(ex, ey, Color.rgb(50, 255, 50), 18);
+                            particles.addExplosion(ex, ey, Color.rgb(100, 255, 100), 10);
+                            vfx.addShockwave(ex, ey, 70f, Color.rgb(50, 255, 50), 3f);
+                            break;
+                        case Invader.TYPE_SHIELDED:
+                            // Blue shattering burst
+                            particles.addDebris(ex, ey, Color.rgb(100, 180, 255), 12);
+                            particles.addExplosion(ex, ey, Color.rgb(150, 200, 255), 10);
+                            break;
+                        case Invader.TYPE_TANK:
+                            // Heavy explosion with debris
+                            particles.addExplosion(ex, ey, Color.rgb(255, 150, 50), 15);
+                            particles.addDebris(ex, ey, Color.rgb(180, 120, 60), 8);
+                            vfx.addShockwave(ex, ey, 80f, Color.rgb(255, 180, 80), 3f);
+                            break;
+                        case Invader.TYPE_SCOUT:
+                            // Fast sparky explosion
+                            particles.addExplosion(ex, ey, Color.rgb(255, 255, 100), 10);
+                            particles.addImpactSparks(ex, ey, Color.rgb(255, 255, 150), 8, 270f);
+                            break;
+                        default:
+                            // Standard explosion
+                            particles.addExplosion(ex, ey, Color.rgb(255, 150, 50), 12);
+                            break;
+                    }
+                    // Impact sparks toward the bullet direction
+                    particles.addImpactSparks(ex, ey, Color.rgb(255, 200, 100), 5, 270f);
 
                     int displayPoints = points * state.getScoreMultiplier() * playerShip.getScoreMultiplier();
                     String popupText = "+" + displayPoints;
@@ -511,14 +570,25 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
                 float bx = boss.getX() + boss.getLength() / 2;
                 float by = boss.getY() + boss.getHeight() / 2;
+                // Boss hit: sparks fly off impact point + small explosion
                 particles.addExplosion(bx, by, Color.rgb(255, 100, 100), 6);
+                particles.addImpactSparks(b.getCenterX(), b.getCenterY(),
+                        Color.rgb(255, 200, 80), 6, 270f);
 
                 if (defeated) {
                     state.registerBossKill(playerShip.getScoreMultiplier());
+                    // Epic multi-layer boss death
                     particles.addBigExplosion(bx, by);
+                    particles.addBigExplosion(bx - 40, by - 20);
+                    particles.addBigExplosion(bx + 40, by + 20);
+                    particles.addSparkleBurst(bx, by, Color.rgb(255, 215, 0), 25);
                     particles.addBanner("BOSS DEFEATED!", Color.rgb(255, 215, 0),
                             screenX, screenY, screenY / 12f);
                     triggerShake(20f, 500);
+                    // VFX: massive shockwave + white flash
+                    vfx.addShockwave(bx, by, screenX * 0.6f, Color.rgb(255, 200, 50), 8f);
+                    vfx.addShockwave(bx, by, screenX * 0.4f, Color.rgb(255, 100, 0), 5f);
+                    vfx.triggerScreenFlash(Color.WHITE, 0.6f);
                     checkAchievements();
                 }
 
@@ -531,6 +601,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                     if (bricks[j].getVisibility() && RectF.intersects(b.getRect(), bricks[j].getRect())) {
                         bricks[j].setInvisible();
                         playSfx(damageShelterID);
+                        // Brick debris effect
+                        float bkx = bricks[j].getRect().centerX();
+                        float bky = bricks[j].getRect().centerY();
+                        particles.addDebris(bkx, bky, Color.rgb(0, 180, 0), 5);
                         hitSomething = true;
                         break;
                     }
@@ -560,15 +634,25 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             // Check vs player
             if (RectF.intersects(b.getRect(), playerShip.getRect())) {
                 if (playerShip.isShielded()) {
-                    // Shield absorbs hit
+                    // Shield absorbs hit — sparkle deflection effect
+                    float shX = playerShip.getX() + playerShip.getLength_EGG() / 2;
+                    float shY = screenY - playerShip.getHeight_EGG() / 2;
+                    particles.addSparkleBurst(shX, shY, Color.rgb(80, 180, 255), 12);
+                    vfx.addShockwave(shX, shY, 50f, Color.rgb(80, 180, 255), 2f);
                     particles.addBanner("SHIELD!", Color.rgb(0, 150, 255),
                             screenX, screenY, screenY / 15f);
                 } else {
                     state.onPlayerHit();
                     playSfx(playerExplodeID);
                     triggerShake(12f, 300);
-                    particles.addExplosion(playerShip.getX() + playerShip.getLength_EGG() / 2,
-                            screenY - playerShip.getHeight_EGG() / 2, Color.RED, 15);
+                    float hitX = playerShip.getX() + playerShip.getLength_EGG() / 2;
+                    float hitY = screenY - playerShip.getHeight_EGG() / 2;
+                    particles.addExplosion(hitX, hitY, Color.RED, 15);
+                    particles.addDebris(hitX, hitY, Color.rgb(200, 50, 50), 8);
+                    particles.addImpactSparks(hitX, hitY, Color.rgb(255, 150, 50), 10, 90f);
+                    // VFX: red flash + small shockwave
+                    vfx.triggerScreenFlash(Color.RED, 0.3f);
+                    vfx.addShockwave(hitX, hitY, 80f, Color.RED, 3f);
 
                     if (state.gameOver) {
                         endGame();
@@ -584,6 +668,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                 if (bricks[j].getVisibility() && RectF.intersects(b.getRect(), bricks[j].getRect())) {
                     bricks[j].setInvisible();
                     playSfx(damageShelterID);
+                    float bkx = bricks[j].getRect().centerX();
+                    float bky = bricks[j].getRect().centerY();
+                    particles.addDebris(bkx, bky, Color.rgb(0, 180, 0), 5);
                     invadersBullets[i] = new Bullet(screenY);
                     break;
                 }
@@ -613,6 +700,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
     private void applyPowerUp(PowerUp pu) {
         particles.addBanner(pu.getName(), pu.getColor(), screenX, screenY, screenY / 15f);
+        // VFX: sparkle burst on power-up collection
+        particles.addSparkleBurst(playerShip.getX() + playerShip.getLength_EGG() / 2,
+                screenY - playerShip.getHeight_EGG() / 2, pu.getColor(), 15);
+        vfx.triggerScreenFlash(pu.getColor(), 0.12f);
         state.powerupsCollectedThisGame++;
         gameData.addPowerupCollected();
 
@@ -750,6 +841,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         particles.addBanner("ORBITAL BOMB!", Color.RED, screenX, screenY, screenY / 10f);
         playSfx(playerExplodeID);
         triggerShake(15f, 400);
+        // VFX: full-screen shockwave from center + white-orange flash
+        vfx.addShockwave(screenX / 2f, screenY / 2f, screenX * 0.8f,
+                Color.rgb(255, 150, 50), 10f);
+        vfx.triggerScreenFlash(Color.rgb(255, 200, 100), 0.5f);
 
         // Check bomb master achievement
         checkAchievements();
@@ -769,6 +864,13 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Background
         canvas.drawBitmap(backgroundBitmap, 0, 0, null);
 
+        // VFX Layer 1: Starfield + ambient dust (behind everything)
+        vfx.drawStarfield(canvas, paint);
+        vfx.drawDust(canvas, paint);
+
+        // VFX Layer 2: Bullet trails (behind ships)
+        vfx.drawTrails(canvas, paint);
+
         // Defence bricks
         for (int i = 0; i < numBricks; i++) {
             if (bricks[i] != null && bricks[i].getVisibility()) {
@@ -776,6 +878,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                         bricks[i].getRect().left, bricks[i].getRect().top, null);
             }
         }
+
+        // VFX: Ship thruster (behind player ship)
+        vfx.drawThruster(canvas, paint);
 
         // Invaders
         for (Invader inv : invaders) {
@@ -802,13 +907,15 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             b.draw(canvas, paint, true);
         }
 
-        // Invader bullets
-        paint.setColor(Color.RED);
+        // Invader bullets (enhanced with glow)
         for (Bullet b : invadersBullets) {
-            if (b != null) {
-                canvas.drawRect(b.getRect(), paint);
+            if (b != null && b.getRect().bottom > 0) {
+                b.draw(canvas, paint, false);
             }
         }
+
+        // VFX Layer 3: Shockwave rings (over ships, under UI)
+        vfx.drawShockwaves(canvas, paint);
 
         // Power-ups
         for (PowerUp pu : powerUps) {
@@ -817,6 +924,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
         // Particle effects
         particles.draw(canvas, paint);
+
+        // VFX Layer 4: Screen flash + combo aura (over everything, under HUD)
+        vfx.drawScreenFlash(canvas, paint);
+        vfx.drawComboAura(canvas, paint);
 
         // HUD
         if (!state.gameOver) {
@@ -973,6 +1084,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         triggerShake(10f, 200);
         particles.addBanner("ULTIMATE LASER!", Color.rgb(255, 0, 255),
                 screenX, screenY, screenY / 12f);
+        // VFX: purple flash + upward shockwave
+        vfx.triggerScreenFlash(Color.rgb(200, 50, 255), 0.35f);
+        vfx.addShockwave(shipCenterX, shipTopY, 120f, Color.rgb(255, 100, 255), 5f);
     }
 
     private Bullet createPlayerBullet() {
