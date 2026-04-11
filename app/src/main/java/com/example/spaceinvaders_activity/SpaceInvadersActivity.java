@@ -75,10 +75,12 @@ public class SpaceInvadersActivity extends Activity {
             // Player level & XP
             TextView levelText = new TextView(this);
             levelText.setText(String.format(Locale.getDefault(),
-                    "Commander Level: %d\nXP: %d / %d\nHigh Score: %d\nGames Played: %d",
+                    "Commander Level: %d | Skill Points: %d\nXP: %d / %d | Spendable: %d\nHigh Score: %d | Games: %d",
                     data.getPlayerLevel(),
+                    SkillTree.getSkillPointBudget(data.getPlayerLevel()),
                     data.getCurrentLevelXP(),
                     data.getXPForNextLevel(),
+                    data.getSpendableXP(),
                     data.getHighScore(),
                     data.getGamesPlayed()));
             levelText.setTextSize(14);
@@ -172,16 +174,22 @@ public class SpaceInvadersActivity extends Activity {
         return btn;
     }
 
-    // ==================== SKILL SELECTION ====================
+    // ==================== SKILL SELECTION (LOADOUT BUILDER) ====================
 
     private void showSkillSelection() {
         runOnUiThread(() -> {
             GameData data = spaceInvadersEngine.getGameData();
             int playerLevel = data.getPlayerLevel();
-            List<Skill> available = Skill.getAvailableSkills(playerLevel);
+            int budget = SkillTree.getSkillPointBudget(playerLevel);
+            List<Skill> purchased = new ArrayList<>();
+            for (Skill sk : Skill.getAllSkills()) {
+                if (data.isSkillPurchased(sk.id) && sk.unlockLevel <= playerLevel) {
+                    purchased.add(sk);
+                }
+            }
 
-            if (available.isEmpty()) {
-                // No skills available, start game directly
+            if (purchased.isEmpty()) {
+                // No skills purchased, start game directly
                 startGameWithSkills(new ArrayList<>());
                 return;
             }
@@ -190,53 +198,108 @@ public class SpaceInvadersActivity extends Activity {
 
             LinearLayout layout = new LinearLayout(this);
             layout.setOrientation(LinearLayout.VERTICAL);
-            layout.setPadding(50, 30, 50, 30);
+            layout.setPadding(40, 25, 40, 25);
 
             TextView title = new TextView(this);
-            title.setText("Select Skills (max 2)");
+            title.setText("BUILD LOADOUT");
             title.setTextSize(20);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             title.setGravity(Gravity.CENTER);
-            title.setPadding(0, 0, 0, 20);
+            title.setPadding(0, 0, 0, 8);
             layout.addView(title);
 
-            TextView hint = new TextView(this);
-            hint.setText(String.format(Locale.getDefault(),
-                    "Commander Level %d - %d skills available", playerLevel, available.size()));
-            hint.setTextSize(13);
-            hint.setGravity(Gravity.CENTER);
-            hint.setPadding(0, 0, 0, 15);
-            layout.addView(hint);
+            // Budget display (updated dynamically)
+            TextView budgetText = new TextView(this);
+            budgetText.setText(String.format(Locale.getDefault(),
+                    "Skill Points: %d / %d", budget, budget));
+            budgetText.setTextSize(15);
+            budgetText.setTypeface(Typeface.DEFAULT_BOLD);
+            budgetText.setGravity(Gravity.CENTER);
+            budgetText.setTextColor(Color.rgb(100, 255, 100));
+            budgetText.setPadding(0, 0, 0, 15);
+            layout.addView(budgetText);
 
-            // Scrollable skill list
+            // Scrollable skill list by category
             ScrollView scroll = new ScrollView(this);
             LinearLayout skillList = new LinearLayout(this);
             skillList.setOrientation(LinearLayout.VERTICAL);
 
             List<CheckBox> checkBoxes = new ArrayList<>();
+            List<Integer> selectedIds = new ArrayList<>();
 
-            for (Skill skill : available) {
-                CheckBox cb = new CheckBox(this);
-                cb.setText(String.format("%s (Lvl %d)\n%s", skill.name, skill.unlockLevel, skill.description));
-                cb.setTextSize(13);
-                cb.setPadding(10, 10, 10, 10);
-                cb.setTag(skill.id);
+            // Group purchased skills by category
+            for (int cat = 0; cat < SkillTree.CATEGORY_COUNT; cat++) {
+                List<Skill> catSkills = new ArrayList<>();
+                for (Skill sk : purchased) {
+                    if (sk.category == cat) catSkills.add(sk);
+                }
+                if (catSkills.isEmpty()) continue;
 
-                // Enforce max 2 selection
-                cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                    if (isChecked) {
-                        int checkedCount = 0;
+                // Category header
+                TextView catHeader = new TextView(this);
+                catHeader.setText(SkillTree.getCategoryName(cat));
+                catHeader.setTextSize(14);
+                catHeader.setTypeface(Typeface.DEFAULT_BOLD);
+                catHeader.setTextColor(SkillTree.getCategoryColor(cat));
+                catHeader.setPadding(0, 12, 0, 4);
+                skillList.addView(catHeader);
+
+                for (Skill skill : catSkills) {
+                    CheckBox cb = new CheckBox(this);
+                    String costDots = "";
+                    for (int p = 0; p < skill.pointCost; p++) costDots += "\u2b24";
+                    cb.setText(String.format("%s %s\n%s", skill.name, costDots, skill.description));
+                    cb.setTextSize(12);
+                    cb.setPadding(8, 6, 8, 6);
+                    cb.setTag(skill.id);
+
+                    // Point budget enforcement
+                    cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                        int skillId = (Integer) buttonView.getTag();
+                        Skill sk = Skill.getSkillById(skillId);
+                        if (sk == null) return;
+
+                        if (isChecked) {
+                            // Check if adding exceeds budget
+                            int usedPoints = 0;
+                            for (CheckBox box : checkBoxes) {
+                                if (box.isChecked()) {
+                                    Skill s = Skill.getSkillById((Integer) box.getTag());
+                                    if (s != null) usedPoints += s.pointCost;
+                                }
+                            }
+                            if (usedPoints > budget) {
+                                cb.setChecked(false);
+                                return;
+                            }
+                        }
+
+                        // Update budget display
+                        int usedPoints = 0;
                         for (CheckBox box : checkBoxes) {
-                            if (box.isChecked()) checkedCount++;
+                            if (box.isChecked()) {
+                                Skill s = Skill.getSkillById((Integer) box.getTag());
+                                if (s != null) usedPoints += s.pointCost;
+                            }
                         }
-                        if (checkedCount > 10) { // Will be replaced by point budget in Phase 4
-                            cb.setChecked(false);
-                        }
-                    }
-                });
+                        int remaining = budget - usedPoints;
+                        budgetText.setText(String.format(Locale.getDefault(),
+                                "Skill Points: %d / %d", remaining, budget));
+                        budgetText.setTextColor(remaining > 0 ?
+                                Color.rgb(100, 255, 100) : Color.rgb(255, 200, 50));
 
-                checkBoxes.add(cb);
-                skillList.addView(cb);
+                        // Disable checkboxes that can't fit in remaining budget
+                        for (CheckBox box : checkBoxes) {
+                            if (!box.isChecked()) {
+                                Skill s = Skill.getSkillById((Integer) box.getTag());
+                                box.setEnabled(s != null && s.pointCost <= remaining);
+                            }
+                        }
+                    });
+
+                    checkBoxes.add(cb);
+                    skillList.addView(cb);
+                }
             }
 
             scroll.addView(skillList);
@@ -245,9 +308,9 @@ public class SpaceInvadersActivity extends Activity {
             // Difficulty selector
             TextView diffLabel = new TextView(this);
             diffLabel.setText("Difficulty:");
-            diffLabel.setTextSize(16);
+            diffLabel.setTextSize(14);
             diffLabel.setTypeface(Typeface.DEFAULT_BOLD);
-            diffLabel.setPadding(0, 20, 0, 5);
+            diffLabel.setPadding(0, 15, 0, 3);
             layout.addView(diffLabel);
 
             RadioGroup diffGroup = new RadioGroup(this);
@@ -255,20 +318,20 @@ public class SpaceInvadersActivity extends Activity {
 
             RadioButton easyRb = new RadioButton(this);
             easyRb.setText("Easy");
-            easyRb.setTextSize(13);
+            easyRb.setTextSize(12);
             easyRb.setId(View.generateViewId());
             diffGroup.addView(easyRb);
 
             RadioButton normalRb = new RadioButton(this);
             normalRb.setText("Normal");
-            normalRb.setTextSize(13);
+            normalRb.setTextSize(12);
             normalRb.setChecked(true);
             normalRb.setId(View.generateViewId());
             diffGroup.addView(normalRb);
 
             RadioButton hardRb = new RadioButton(this);
             hardRb.setText("Hard");
-            hardRb.setTextSize(13);
+            hardRb.setTextSize(12);
             hardRb.setId(View.generateViewId());
             diffGroup.addView(hardRb);
 
@@ -277,9 +340,9 @@ public class SpaceInvadersActivity extends Activity {
             // Game mode selector
             TextView modeLabel = new TextView(this);
             modeLabel.setText("Game Mode:");
-            modeLabel.setTextSize(16);
+            modeLabel.setTextSize(14);
             modeLabel.setTypeface(Typeface.DEFAULT_BOLD);
-            modeLabel.setPadding(0, 15, 0, 5);
+            modeLabel.setPadding(0, 10, 0, 3);
             layout.addView(modeLabel);
 
             RadioGroup modeGroup = new RadioGroup(this);
@@ -287,20 +350,20 @@ public class SpaceInvadersActivity extends Activity {
 
             RadioButton campaignRb = new RadioButton(this);
             campaignRb.setText("Campaign");
-            campaignRb.setTextSize(12);
+            campaignRb.setTextSize(11);
             campaignRb.setChecked(true);
             campaignRb.setId(View.generateViewId());
             modeGroup.addView(campaignRb);
 
             RadioButton survivalRb = new RadioButton(this);
             survivalRb.setText("Survival");
-            survivalRb.setTextSize(12);
+            survivalRb.setTextSize(11);
             survivalRb.setId(View.generateViewId());
             modeGroup.addView(survivalRb);
 
             RadioButton timeAttackRb = new RadioButton(this);
             timeAttackRb.setText("Time Attack");
-            timeAttackRb.setTextSize(12);
+            timeAttackRb.setTextSize(11);
             timeAttackRb.setId(View.generateViewId());
             modeGroup.addView(timeAttackRb);
 
@@ -343,71 +406,157 @@ public class SpaceInvadersActivity extends Activity {
         spaceInvadersEngine.startNewGame(skills, difficulty, mode);
     }
 
-    // ==================== SKILL TREE ====================
+    // ==================== SKILL TREE (PURCHASE + VIEW) ====================
 
     private void showSkillTree() {
         runOnUiThread(() -> {
             GameData data = spaceInvadersEngine.getGameData();
             int playerLevel = data.getPlayerLevel();
+            int budget = SkillTree.getSkillPointBudget(playerLevel);
 
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
 
             ScrollView scroll = new ScrollView(this);
             LinearLayout layout = new LinearLayout(this);
             layout.setOrientation(LinearLayout.VERTICAL);
-            layout.setPadding(50, 30, 50, 30);
+            layout.setPadding(40, 25, 40, 25);
 
             TextView title = new TextView(this);
             title.setText("SKILL TREE");
             title.setTextSize(22);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             title.setGravity(Gravity.CENTER);
-            title.setPadding(0, 0, 0, 10);
+            title.setPadding(0, 0, 0, 8);
             layout.addView(title);
 
+            // Player info
             TextView levelInfo = new TextView(this);
             levelInfo.setText(String.format(Locale.getDefault(),
-                    "Your Level: %d | XP: %d / %d",
-                    playerLevel, data.getCurrentLevelXP(), data.getXPForNextLevel()));
-            levelInfo.setTextSize(14);
+                    "Level: %d | Spendable XP: %d | Skill Points: %d",
+                    playerLevel, data.getSpendableXP(), budget));
+            levelInfo.setTextSize(13);
             levelInfo.setGravity(Gravity.CENTER);
-            levelInfo.setPadding(0, 0, 0, 20);
+            levelInfo.setPadding(0, 0, 0, 5);
             layout.addView(levelInfo);
 
-            for (Skill skill : Skill.getAllSkills()) {
-                LinearLayout skillRow = new LinearLayout(this);
-                skillRow.setOrientation(LinearLayout.VERTICAL);
-                skillRow.setPadding(15, 15, 15, 15);
+            // Purchased count
+            int purchasedCount = 0;
+            for (Skill sk : Skill.getAllSkills()) {
+                if (data.isSkillPurchased(sk.id)) purchasedCount++;
+            }
+            TextView purchasedInfo = new TextView(this);
+            purchasedInfo.setText(String.format(Locale.getDefault(),
+                    "Skills Owned: %d / %d", purchasedCount, Skill.getAllSkills().size()));
+            purchasedInfo.setTextSize(12);
+            purchasedInfo.setGravity(Gravity.CENTER);
+            purchasedInfo.setPadding(0, 0, 0, 15);
+            layout.addView(purchasedInfo);
 
-                boolean unlocked = skill.unlockLevel <= playerLevel;
+            // Show skills grouped by category
+            for (int cat = 0; cat < SkillTree.CATEGORY_COUNT; cat++) {
+                List<Skill> catSkills = Skill.getSkillsByCategory(cat);
+                if (catSkills.isEmpty()) continue;
 
-                TextView skillName = new TextView(this);
-                String status = unlocked ? " [UNLOCKED]" : " [Level " + skill.unlockLevel + "]";
-                skillName.setText(skill.name + status);
-                skillName.setTextSize(16);
-                skillName.setTypeface(Typeface.DEFAULT_BOLD);
+                // Category header with colored bar
+                LinearLayout catRow = new LinearLayout(this);
+                catRow.setOrientation(LinearLayout.HORIZONTAL);
+                catRow.setPadding(0, 15, 0, 5);
+                catRow.setGravity(Gravity.CENTER_VERTICAL);
 
-                TextView skillDesc = new TextView(this);
-                skillDesc.setText(skill.description);
-                skillDesc.setTextSize(13);
-                skillDesc.setPadding(0, 5, 0, 10);
+                View colorBar = new View(this);
+                LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(8, 30);
+                barParams.setMargins(0, 0, 10, 0);
+                colorBar.setLayoutParams(barParams);
+                colorBar.setBackgroundColor(SkillTree.getCategoryColor(cat));
+                catRow.addView(colorBar);
 
-                if (!unlocked) {
-                    skillName.setAlpha(0.4f);
-                    skillDesc.setAlpha(0.4f);
+                TextView catHeader = new TextView(this);
+                catHeader.setText(SkillTree.getCategoryName(cat).toUpperCase());
+                catHeader.setTextSize(15);
+                catHeader.setTypeface(Typeface.DEFAULT_BOLD);
+                catHeader.setTextColor(SkillTree.getCategoryColor(cat));
+                catRow.addView(catHeader);
+
+                layout.addView(catRow);
+
+                for (Skill skill : catSkills) {
+                    boolean levelReached = skill.unlockLevel <= playerLevel;
+                    boolean purchased = data.isSkillPurchased(skill.id);
+                    boolean canBuy = SkillTree.canPurchaseSkill(skill.id, playerLevel, data);
+                    int xpCost = SkillTree.getXPCost(skill);
+
+                    LinearLayout skillRow = new LinearLayout(this);
+                    skillRow.setOrientation(LinearLayout.HORIZONTAL);
+                    skillRow.setPadding(12, 8, 8, 8);
+                    skillRow.setGravity(Gravity.CENTER_VERTICAL);
+
+                    // Skill info (left side)
+                    LinearLayout infoCol = new LinearLayout(this);
+                    infoCol.setOrientation(LinearLayout.VERTICAL);
+                    infoCol.setLayoutParams(new LinearLayout.LayoutParams(
+                            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+                    // Name with point cost dots
+                    TextView skillName = new TextView(this);
+                    String costDots = "";
+                    for (int p = 0; p < skill.pointCost; p++) costDots += "\u2b24";
+                    String statusTag;
+                    if (purchased) {
+                        statusTag = " [OWNED]";
+                    } else if (!levelReached) {
+                        statusTag = " [Lv." + skill.unlockLevel + "]";
+                    } else {
+                        statusTag = " [" + xpCost + " XP]";
+                    }
+                    skillName.setText(skill.name + " " + costDots + statusTag);
+                    skillName.setTextSize(13);
+                    skillName.setTypeface(Typeface.DEFAULT_BOLD);
+
+                    TextView skillDesc = new TextView(this);
+                    skillDesc.setText(skill.description);
+                    skillDesc.setTextSize(11);
+                    skillDesc.setPadding(0, 2, 0, 0);
+
+                    if (!levelReached) {
+                        skillName.setAlpha(0.35f);
+                        skillDesc.setAlpha(0.35f);
+                    } else if (purchased) {
+                        skillName.setTextColor(Color.rgb(100, 255, 100));
+                    }
+
+                    infoCol.addView(skillName);
+                    infoCol.addView(skillDesc);
+                    skillRow.addView(infoCol);
+
+                    // Buy button (right side)
+                    if (levelReached && !purchased) {
+                        Button buyBtn = new Button(this);
+                        buyBtn.setText("BUY\n" + xpCost + " XP");
+                        buyBtn.setTextSize(10);
+                        buyBtn.setEnabled(canBuy);
+                        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT);
+                        btnParams.setMargins(8, 0, 0, 0);
+                        buyBtn.setLayoutParams(btnParams);
+                        final int skillId = skill.id;
+                        buyBtn.setOnClickListener(v -> {
+                            if (data.purchaseSkill(skillId)) {
+                                showSkillTree(); // Refresh
+                            }
+                        });
+                        skillRow.addView(buyBtn);
+                    }
+
+                    layout.addView(skillRow);
+
+                    // Thin divider
+                    View divider = new View(this);
+                    divider.setLayoutParams(new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT, 1));
+                    divider.setBackgroundColor(Color.DKGRAY);
+                    layout.addView(divider);
                 }
-
-                skillRow.addView(skillName);
-                skillRow.addView(skillDesc);
-
-                // Divider
-                View divider = new View(this);
-                divider.setLayoutParams(new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, 2));
-                divider.setBackgroundColor(Color.GRAY);
-
-                layout.addView(skillRow);
-                layout.addView(divider);
             }
 
             scroll.addView(layout);
@@ -520,27 +669,36 @@ public class SpaceInvadersActivity extends Activity {
             title.setPadding(0, 0, 0, 30);
             layout.addView(title);
 
+            int pLevel = data.getPlayerLevel();
+            int purchasedCount = 0;
+            for (Skill sk : Skill.getAllSkills()) {
+                if (data.isSkillPurchased(sk.id)) purchasedCount++;
+            }
+
             String[] labels = {
                     "Commander Level",
                     "Total XP",
+                    "Spendable XP",
                     "XP to Next Level",
+                    "Skill Point Budget",
+                    "Skills Purchased",
                     "High Score",
                     "Highest Level Reached",
                     "Games Played",
-                    "Total Enemies Defeated",
-                    "Skills Unlocked"
+                    "Total Enemies Defeated"
             };
 
             String[] values = {
-                    String.valueOf(data.getPlayerLevel()),
+                    String.valueOf(pLevel),
                     String.valueOf(data.getTotalXP()),
+                    String.valueOf(data.getSpendableXP()),
                     data.getCurrentLevelXP() + " / " + data.getXPForNextLevel(),
+                    String.valueOf(SkillTree.getSkillPointBudget(pLevel)),
+                    purchasedCount + " / " + Skill.getAllSkills().size(),
                     String.valueOf(data.getHighScore()),
                     String.valueOf(data.getHighestLevel()),
                     String.valueOf(data.getGamesPlayed()),
-                    String.valueOf(data.getTotalKills()),
-                    Skill.getAvailableSkills(data.getPlayerLevel()).size() + " / "
-                            + Skill.getAllSkills().size()
+                    String.valueOf(data.getTotalKills())
             };
 
             for (int i = 0; i < labels.length; i++) {
