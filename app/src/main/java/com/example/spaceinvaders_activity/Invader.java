@@ -457,21 +457,4 @@ public class Invader {
         }
     }
 
-    // Legacy compatibility constructor
-    public Invader(Context context, int row, int column, int screenX, int screenY, String difficulty) {
-        this(context, row, column, screenX, screenY,
-                difficulty.equals("Dificil") ? 200f : 100f,
-                difficulty.equals("Dificil") ? 250 : 1000);
-    }
-
-    public void setDifficulty(String difficulty) {
-        if (difficulty.equals("Dificil")) {
-            baseSpeed = 200;
-            shotChance = 250;
-        } else {
-            baseSpeed = 100;
-            shotChance = 1000;
-        }
-        shipSpeed = baseSpeed;
-    }
 }

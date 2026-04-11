@@ -305,10 +305,6 @@ public class GameData {
 
     public int getSpendableXP() { return prefs.getInt(KEY_SPENDABLE_XP, 0); }
 
-    public void addSpendableXP(int xp) {
-        prefs.edit().putInt(KEY_SPENDABLE_XP, getSpendableXP() + xp).apply();
-    }
-
     public boolean spendXP(int amount) {
         int current = getSpendableXP();
         if (current >= amount) {
@@ -371,11 +367,5 @@ public class GameData {
             this.xpEarned = xpEarned;
         }
 
-        public String getFormattedTime() {
-            long seconds = timePlayed;
-            long minutes = seconds / 60;
-            seconds = seconds % 60;
-            return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
-        }
     }
 }

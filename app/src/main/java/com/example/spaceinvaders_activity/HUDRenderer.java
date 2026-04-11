@@ -3,7 +3,6 @@ package com.example.spaceinvaders_activity;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.RectF;
 
 import java.util.List;
 import java.util.Locale;

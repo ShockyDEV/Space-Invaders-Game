@@ -53,10 +53,6 @@ public class GameConfig {
                 : new int[]{100, 0, 0, 0, 0, 0, 0};
     }
 
-    public int getTotalInvaders() {
-        return numColumns * numRows;
-    }
-
     /**
      * Returns a new GameConfig with values adjusted for the given difficulty.
      *
