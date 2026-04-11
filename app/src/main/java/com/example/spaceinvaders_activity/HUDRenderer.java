@@ -294,4 +294,42 @@ public class HUDRenderer {
 
         paint.setTextAlign(Paint.Align.LEFT);
     }
+
+    private static final String[] TUTORIAL_TIPS = {
+            "Drag your finger to move your ship",
+            "Release your finger to fire!",
+            "Kill enemies quickly for COMBO multipliers",
+            "Collect power-ups dropped by enemies",
+            "Good luck, Commander!"
+    };
+
+    public void drawTutorial(Canvas canvas, Paint paint, GameState state) {
+        if (!state.tutorialActive || state.tutorialStep >= GameState.TUTORIAL_STEPS) return;
+
+        // Semi-transparent overlay
+        paint.setColor(Color.argb(160, 0, 0, 0));
+        canvas.drawRect(0, screenY * 0.3f, screenX, screenY * 0.7f, paint);
+
+        paint.setTextAlign(Paint.Align.CENTER);
+        float cx = screenX / 2f;
+
+        // Step indicator
+        paint.setColor(Color.argb(200, 150, 150, 150));
+        paint.setTextSize(smallTextSize);
+        canvas.drawText("TIP " + (state.tutorialStep + 1) + " / " + GameState.TUTORIAL_STEPS,
+                cx, screenY * 0.38f, paint);
+
+        // Tip text
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(hudTextSize * 1.2f);
+        canvas.drawText(TUTORIAL_TIPS[state.tutorialStep], cx, screenY * 0.48f, paint);
+
+        // Tap to continue
+        float pulse = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() * 0.005);
+        paint.setColor(Color.argb((int) (200 * pulse), 200, 200, 200));
+        paint.setTextSize(hudTextSize * 0.8f);
+        canvas.drawText("Tap to continue", cx, screenY * 0.6f, paint);
+
+        paint.setTextAlign(Paint.Align.LEFT);
+    }
 }

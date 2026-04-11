@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 
 public class PlayerShip {
@@ -59,6 +61,12 @@ public class PlayerShip {
     // Shield visual
     private float shieldPulse = 0;
 
+    // Skin
+    private int skinId = 0;
+    private int skinTintColor = 0;
+    private boolean skinIsRainbow = false;
+    private Paint skinPaint;
+
     private int screenX, screenY;
 
     public PlayerShip(Context context, int screenX, int screenY) {
@@ -75,6 +83,31 @@ public class PlayerShip {
 
         bitmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.playership);
         bitmap = Bitmap.createScaledBitmap(bitmap, (int) length_EGG, (int) height_EGG, false);
+    }
+
+    // --- Skin ---
+
+    public void applySkin(int skinId) {
+        this.skinId = skinId;
+        CosmeticsShop.ShipSkin skin = CosmeticsShop.getSkinById(skinId);
+        skinTintColor = skin.tintColor;
+        skinIsRainbow = skin.isRainbow;
+        skinPaint = new Paint();
+        if (skinTintColor != 0) {
+            skinPaint.setColorFilter(new PorterDuffColorFilter(skinTintColor, PorterDuff.Mode.MULTIPLY));
+        }
+    }
+
+    /** Returns a Paint with the current skin tint applied (may be null for default) */
+    public Paint getSkinPaint() {
+        if (skinIsRainbow) {
+            // Cycle through hues over time
+            float hue = (System.currentTimeMillis() % 5000) / 5000f * 360f;
+            int color = Color.HSVToColor(new float[]{hue, 0.7f, 1.0f});
+            if (skinPaint == null) skinPaint = new Paint();
+            skinPaint.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
+        }
+        return (skinId != 0 && skinPaint != null) ? skinPaint : null;
     }
 
     // --- Skill activation ---

@@ -106,6 +106,10 @@ public class SpaceInvadersActivity extends Activity {
             Button achieveBtn = createMenuButton("ACHIEVEMENTS");
             layout.addView(achieveBtn);
 
+            // Shop button
+            Button shopBtn = createMenuButton("SHOP");
+            layout.addView(shopBtn);
+
             // Settings button
             Button settingsBtn = createMenuButton("SETTINGS");
             layout.addView(settingsBtn);
@@ -137,6 +141,11 @@ public class SpaceInvadersActivity extends Activity {
             achieveBtn.setOnClickListener(v -> {
                 dialog.dismiss();
                 showAchievements();
+            });
+
+            shopBtn.setOnClickListener(v -> {
+                dialog.dismiss();
+                showShop();
             });
 
             settingsBtn.setOnClickListener(v -> {
@@ -573,6 +582,121 @@ public class SpaceInvadersActivity extends Activity {
         });
     }
 
+    // ==================== SHOP ====================
+
+    private void showShop() {
+        runOnUiThread(() -> {
+            GameData data = spaceInvadersEngine.getGameData();
+            List<CosmeticsShop.ShipSkin> allSkins = CosmeticsShop.getAllSkins();
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+            ScrollView scroll = new ScrollView(this);
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setPadding(50, 30, 50, 30);
+
+            TextView title = new TextView(this);
+            title.setText("SHIP SKINS");
+            title.setTextSize(22);
+            title.setTypeface(Typeface.DEFAULT_BOLD);
+            title.setGravity(Gravity.CENTER);
+            title.setPadding(0, 0, 0, 10);
+            layout.addView(title);
+
+            TextView balanceText = new TextView(this);
+            balanceText.setText("Spendable XP: " + data.getSpendableXP());
+            balanceText.setTextSize(15);
+            balanceText.setGravity(Gravity.CENTER);
+            balanceText.setPadding(0, 0, 0, 20);
+            layout.addView(balanceText);
+
+            int selectedSkin = data.getSelectedSkin();
+
+            for (CosmeticsShop.ShipSkin skin : allSkins) {
+                boolean owned = data.isSkinOwned(skin.id);
+                boolean selected = skin.id == selectedSkin;
+
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setPadding(10, 15, 10, 15);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+
+                // Color swatch
+                View swatch = new View(this);
+                LinearLayout.LayoutParams swatchParams = new LinearLayout.LayoutParams(40, 40);
+                swatchParams.setMargins(0, 0, 15, 0);
+                swatch.setLayoutParams(swatchParams);
+                if (skin.isRainbow) {
+                    swatch.setBackgroundColor(Color.rgb(255, 100, 200));
+                } else if (skin.tintColor != 0) {
+                    swatch.setBackgroundColor(skin.tintColor);
+                } else {
+                    swatch.setBackgroundColor(Color.LTGRAY);
+                }
+                row.addView(swatch);
+
+                // Name and status
+                TextView nameText = new TextView(this);
+                String label = skin.name;
+                if (selected) label += " [EQUIPPED]";
+                else if (owned) label += " [OWNED]";
+                else label += " - " + skin.cost + " XP";
+                nameText.setText(label);
+                nameText.setTextSize(15);
+                nameText.setLayoutParams(new LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                if (selected) nameText.setTextColor(Color.rgb(100, 255, 100));
+                else if (owned) nameText.setTextColor(Color.rgb(200, 200, 200));
+                row.addView(nameText);
+
+                // Action button
+                if (!owned && skin.cost > 0) {
+                    Button buyBtn = new Button(this);
+                    buyBtn.setText("BUY");
+                    buyBtn.setTextSize(12);
+                    final int skinId = skin.id;
+                    final int cost = skin.cost;
+                    buyBtn.setOnClickListener(v -> {
+                        if (data.spendXP(cost)) {
+                            data.ownSkin(skinId);
+                            data.setSelectedSkin(skinId);
+                            showShop(); // Refresh
+                        }
+                    });
+                    buyBtn.setEnabled(data.getSpendableXP() >= skin.cost);
+                    row.addView(buyBtn);
+                } else if (owned && !selected) {
+                    Button equipBtn = new Button(this);
+                    equipBtn.setText("EQUIP");
+                    equipBtn.setTextSize(12);
+                    final int skinId = skin.id;
+                    equipBtn.setOnClickListener(v -> {
+                        data.setSelectedSkin(skinId);
+                        showShop(); // Refresh
+                    });
+                    row.addView(equipBtn);
+                }
+
+                layout.addView(row);
+
+                View divider = new View(this);
+                divider.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 1));
+                divider.setBackgroundColor(Color.GRAY);
+                layout.addView(divider);
+            }
+
+            scroll.addView(layout);
+            builder.setView(scroll);
+            builder.setPositiveButton("BACK", (dialog, which) -> showMainMenu());
+
+            AlertDialog dialog = builder.create();
+            dialog.setCancelable(false);
+            dialog.show();
+        });
+    }
+
     // ==================== ACHIEVEMENTS ====================
 
     private void showAchievements() {
@@ -715,6 +839,22 @@ public class SpaceInvadersActivity extends Activity {
             vibrationCb.setChecked(data.isVibrationEnabled());
             vibrationCb.setPadding(0, 20, 0, 10);
             layout.addView(vibrationCb);
+
+            // Reset tutorial button
+            Button tutorialBtn = new Button(this);
+            tutorialBtn.setText("RESET TUTORIAL");
+            tutorialBtn.setTextSize(13);
+            tutorialBtn.setOnClickListener(v -> {
+                data.setTutorialDone(false);
+                tutorialBtn.setText("TUTORIAL RESET!");
+                tutorialBtn.setEnabled(false);
+            });
+            LinearLayout.LayoutParams tutParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            tutParams.setMargins(0, 20, 0, 0);
+            tutorialBtn.setLayoutParams(tutParams);
+            layout.addView(tutorialBtn);
 
             builder.setView(layout);
             builder.setPositiveButton("SAVE", (dialog, which) -> {

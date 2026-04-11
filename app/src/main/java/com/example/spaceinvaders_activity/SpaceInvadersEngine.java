@@ -190,6 +190,17 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Apply skills to player
         playerShip.applySkills(activeSkills);
 
+        // Apply selected skin
+        playerShip.applySkin(gameData.getSelectedSkin());
+
+        // Start tutorial if first time
+        if (!gameData.isTutorialDone()) {
+            state.tutorialActive = true;
+            state.tutorialStep = 0;
+            state.tutorialStepShownAt = System.currentTimeMillis();
+            state.paused = true; // Pause during tutorial
+        }
+
         // Start music
         startMusic();
     }
@@ -780,9 +791,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             boss.drawEffects(canvas, paint);
         }
 
-        // Player ship
+        // Player ship (with skin tint)
+        Paint shipPaint = playerShip.getSkinPaint();
         canvas.drawBitmap(playerShip.getBitmap(), playerShip.getX(),
-                screenY - playerShip.getHeight_EGG(), paint);
+                screenY - playerShip.getHeight_EGG(), shipPaint != null ? shipPaint : paint);
         playerShip.drawEffects(canvas, paint);
 
         // Player bullets
@@ -821,8 +833,14 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             hudRenderer.drawGameOver(canvas, paint, state);
         }
 
-        // Pause overlay (but not during game over or transition)
-        if (state.paused && !state.gameOver && !state.levelTransition && !state.isFirstRun) {
+        // Tutorial overlay
+        if (state.tutorialActive) {
+            hudRenderer.drawTutorial(canvas, paint, state);
+        }
+
+        // Pause overlay (but not during game over, transition, or tutorial)
+        if (state.paused && !state.gameOver && !state.levelTransition
+                && !state.isFirstRun && !state.tutorialActive) {
             hudRenderer.drawPauseScreen(canvas, paint);
         }
 
@@ -845,6 +863,18 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         }
 
         if (action == MotionEvent.ACTION_DOWN) {
+            // Advance tutorial on tap
+            if (state.tutorialActive) {
+                state.tutorialStep++;
+                if (state.tutorialStep >= GameState.TUTORIAL_STEPS) {
+                    state.tutorialActive = false;
+                    state.paused = false; // Resume game after tutorial
+                    gameData.setTutorialDone(true);
+                }
+                state.tutorialStepShownAt = System.currentTimeMillis();
+                return true;
+            }
+
             // Tap to dismiss game over
             if (state.gameOver) {
                 state.isFirstRun = true;

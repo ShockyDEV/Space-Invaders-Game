@@ -83,6 +83,8 @@ public class GameData {
         SharedPreferences.Editor editor = prefs.edit();
         editor.putInt(KEY_TOTAL_XP, totalXP);
         editor.putInt(KEY_PLAYER_LEVEL, level);
+        // Also add to spendable XP for cosmetics shop
+        editor.putInt(KEY_SPENDABLE_XP, getSpendableXP() + xp);
         editor.apply();
 
         return leveledUp;
@@ -287,6 +289,59 @@ public class GameData {
     }
 
     public int getTotalPowerups() { return prefs.getInt(KEY_TOTAL_POWERUPS, 0); }
+
+    // --- Tutorial ---
+
+    private static final String KEY_TUTORIAL_DONE = "tutorialDone";
+
+    public boolean isTutorialDone() { return prefs.getBoolean(KEY_TUTORIAL_DONE, false); }
+    public void setTutorialDone(boolean done) { prefs.edit().putBoolean(KEY_TUTORIAL_DONE, done).apply(); }
+
+    // --- Cosmetics / Skins ---
+
+    private static final String KEY_OWNED_SKINS = "ownedSkins";
+    private static final String KEY_SELECTED_SKIN = "selectedSkin";
+    private static final String KEY_SPENDABLE_XP = "spendableXP";
+
+    public int getSpendableXP() { return prefs.getInt(KEY_SPENDABLE_XP, 0); }
+
+    public void addSpendableXP(int xp) {
+        prefs.edit().putInt(KEY_SPENDABLE_XP, getSpendableXP() + xp).apply();
+    }
+
+    public boolean spendXP(int amount) {
+        int current = getSpendableXP();
+        if (current >= amount) {
+            prefs.edit().putInt(KEY_SPENDABLE_XP, current - amount).apply();
+            return true;
+        }
+        return false;
+    }
+
+    public void ownSkin(int skinId) {
+        String owned = prefs.getString(KEY_OWNED_SKINS, "0"); // Skin 0 (default) always owned
+        if (!isSkinOwned(skinId)) {
+            owned += "," + skinId;
+            prefs.edit().putString(KEY_OWNED_SKINS, owned).apply();
+        }
+    }
+
+    public boolean isSkinOwned(int skinId) {
+        if (skinId == 0) return true; // Default always owned
+        String owned = prefs.getString(KEY_OWNED_SKINS, "0");
+        for (String s : owned.split(",")) {
+            try {
+                if (Integer.parseInt(s.trim()) == skinId) return true;
+            } catch (NumberFormatException e) { /* skip */ }
+        }
+        return false;
+    }
+
+    public int getSelectedSkin() { return prefs.getInt(KEY_SELECTED_SKIN, 0); }
+
+    public void setSelectedSkin(int skinId) {
+        prefs.edit().putInt(KEY_SELECTED_SKIN, skinId).apply();
+    }
 
     // --- Reset ---
 

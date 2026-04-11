@@ -77,6 +77,12 @@ public class GameState {
     // Star rating for current level
     public int starRating = 0; // 1-3
 
+    // Tutorial
+    public boolean tutorialActive = false;
+    public int tutorialStep = 0;
+    public static final int TUTORIAL_STEPS = 5;
+    public long tutorialStepShownAt = 0;
+
     public GameState() {
         levelConfig = GameConfig.getLevel(1);
     }
