@@ -47,6 +47,8 @@ public class GameState {
     public int comboCount = 0;
     public long lastKillTime = 0;
     public static final long COMBO_WINDOW = 2000; // 2 seconds
+    public long effectiveComboWindow = COMBO_WINDOW;
+    public float xpMultiplier = 1.0f;
     public int maxCombo = 0;
 
     // Active skills for this game session
@@ -153,7 +155,7 @@ public class GameState {
 
     public void registerKill(int basePoints, int playerScoreMultiplier) {
         long now = System.currentTimeMillis();
-        if (now - lastKillTime < COMBO_WINDOW) {
+        if (now - lastKillTime < effectiveComboWindow) {
             comboCount++;
         } else {
             comboCount = 1;
@@ -164,7 +166,7 @@ public class GameState {
         int totalMult = getScoreMultiplier() * playerScoreMultiplier;
         int points = basePoints * totalMult;
         score += points;
-        xpEarned += GameData.XP_PER_KILL;
+        xpEarned += (int)(GameData.XP_PER_KILL * xpMultiplier);
         enemiesKilled++;
 
         // Track survival wave kills
@@ -176,7 +178,7 @@ public class GameState {
     public void registerBossKill(int playerScoreMultiplier) {
         int totalMult = getScoreMultiplier() * playerScoreMultiplier;
         score += 500 * totalMult;
-        xpEarned += GameData.XP_PER_BOSS_KILL;
+        xpEarned += (int)(GameData.XP_PER_BOSS_KILL * xpMultiplier);
         bossesKilled++;
         enemiesKilled++;
     }
@@ -244,8 +246,13 @@ public class GameState {
     }
 
     public void freezeEnemies() {
+        freezeEnemies(false);
+    }
+
+    public void freezeEnemies(boolean extended) {
         enemiesFrozen = true;
-        freezeEndTime = System.currentTimeMillis() + FREEZE_DURATION;
+        long duration = extended ? FREEZE_DURATION * 2 : FREEZE_DURATION; // 8s with Freeze Wave skill
+        freezeEndTime = System.currentTimeMillis() + duration;
     }
 
     public void updateFreeze() {

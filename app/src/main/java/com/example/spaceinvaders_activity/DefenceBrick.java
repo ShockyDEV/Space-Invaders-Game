@@ -8,6 +8,7 @@ public class DefenceBrick {
     private RectF rect;
 
     private boolean isVisible;
+    private int hitPoints = 1; // Fortress Mode sets this to 3
 
     private Bitmap bitmap; // Añadimos un bitmap para la imagen de los bloques
 
@@ -49,6 +50,19 @@ public class DefenceBrick {
     public void setInvisible(){
         isVisible = false;
     }
+
+    /** Takes a hit. Returns true if destroyed. */
+    public boolean takeHit() {
+        hitPoints--;
+        if (hitPoints <= 0) {
+            isVisible = false;
+            return true;
+        }
+        return false;
+    }
+
+    public void setHitPoints(int hp) { this.hitPoints = hp; }
+    public int getHitPoints() { return hitPoints; }
 
     public boolean getVisibility(){
         return isVisible;

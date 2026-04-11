@@ -52,12 +52,32 @@ public class PowerUp {
         return random.nextFloat() < DROP_CHANCE;
     }
 
+    /** Lucky Drops skill doubles the drop chance */
+    public static boolean shouldDrop(boolean luckyDrops) {
+        float chance = luckyDrops ? DROP_CHANCE * 2 : DROP_CHANCE;
+        return random.nextFloat() < chance;
+    }
+
     public void update(long fps) {
         if (!active || fps <= 0) return;
         y += FALL_SPEED / fps;
         pulsePhase += 5f / fps;
         if (pulsePhase > 2 * Math.PI) pulsePhase -= 2 * (float) Math.PI;
         updateRect();
+    }
+
+    /** Magnet Pull: drift toward the given position */
+    public void attractToward(float targetX, float targetY, long fps) {
+        if (fps <= 0) return;
+        float dx = targetX - x;
+        float dy = targetY - y;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist > 5) {
+            float pullSpeed = 120f; // pixels/second
+            x += (dx / dist) * pullSpeed / fps;
+            y += (dy / dist) * pullSpeed / fps;
+            updateRect();
+        }
     }
 
     private void updateRect() {

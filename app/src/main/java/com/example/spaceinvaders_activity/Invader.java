@@ -70,6 +70,9 @@ public class Invader {
     private boolean frozen = false;
     private long freezeEndTime = 0;
 
+    // Speed multiplier (Temporal Shift sets to 0.8)
+    private float speedMultiplier = 1.0f;
+
     // Animation
     private boolean useAltBitmap = false;
     private long lastAnimSwitch = 0;
@@ -303,21 +306,25 @@ public class Invader {
     public float getLength() { return length; }
     public float getHeight() { return height; }
 
+    public void setSpeedMultiplier(float mult) { this.speedMultiplier = mult; }
+
     public void update(long fps) {
         if (isFrozen()) return; // Don't move when frozen
+
+        float effectiveSpeed = shipSpeed * speedMultiplier;
 
         // Kamikaze: move diagonally toward player
         if (enemyType == TYPE_KAMIKAZE && targetPlayerX >= 0) {
             float dx = targetPlayerX - (x + length / 2);
-            float moveX = Math.signum(dx) * shipSpeed * 0.6f / fps;
+            float moveX = Math.signum(dx) * effectiveSpeed * 0.6f / fps;
             x += moveX;
-            y += kamikazeSpeedY / fps;
+            y += kamikazeSpeedY * speedMultiplier / fps;
         } else {
             if (shipMoving == LEFT) {
-                x = x - shipSpeed / fps;
+                x = x - effectiveSpeed / fps;
             }
             if (shipMoving == RIGHT) {
-                x = x + shipSpeed / fps;
+                x = x + effectiveSpeed / fps;
             }
         }
 

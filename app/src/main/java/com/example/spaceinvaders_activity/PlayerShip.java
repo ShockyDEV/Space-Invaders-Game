@@ -46,6 +46,55 @@ public class PlayerShip {
     private static final long CHARGE_DURATION = 1500; // 1.5 seconds to fully charge
     private static final long ULTIMATE_COOLDOWN = 15000; // 15 second cooldown
 
+    // --- New skill flags ---
+    private boolean hasHomingMissiles = false;
+    private boolean hasChainLightning = false;
+    private boolean hasBarrageMode = false;
+    private boolean hasPlasmaCannon = false;
+    private boolean hasReflectBarrier = false;
+    private boolean hasAutoRepair = false;
+    private boolean hasFortressMode = false;
+    private boolean hasEmergencyWarp = false;
+    private boolean hasNanoShield = false;
+    private boolean hasMagnetPull = false;
+    private boolean hasLuckyDrops = false;
+    private boolean hasFreezeWave = false;
+    private boolean hasAllyDrone = false;
+    private boolean hasTemporalShift = false;
+    private boolean hasSalvageBot = false;
+    private boolean hasComboMaster = false;
+    private boolean hasCriticalHit = false;
+    private boolean hasMomentum = false;
+    private boolean hasScavenger = false;
+    private boolean hasVeteransInstinct = false;
+    private boolean hasXPSurge = false;
+    private boolean hasBlackHole = false;
+    private boolean hasAllySquadron = false;
+    private boolean hasTimeStop = false;
+    private boolean hasSupernova = false;
+
+    // Cooldown timers for active skills
+    private int homingShotCounter = 0;
+    private long barrageCooldownEnd = 0;
+    private static final long BARRAGE_COOLDOWN = 20000;
+    private long emergencyWarpCooldownEnd = 0;
+    private static final long EMERGENCY_WARP_COOLDOWN = 10000;
+    private long nanoShieldCooldownEnd = 0;
+    private static final long NANO_SHIELD_COOLDOWN = 20000;
+    private boolean nanoShieldActive = true;
+    private long blackHoleCooldownEnd = 0;
+    private static final long BLACK_HOLE_COOLDOWN = 30000;
+    private long allySquadronCooldownEnd = 0;
+    private static final long ALLY_SQUADRON_COOLDOWN = 45000;
+    private long allySquadronEnd = 0;
+    private static final long ALLY_SQUADRON_DURATION = 10000;
+    private long timeStopCooldownEnd = 0;
+    private static final long TIME_STOP_COOLDOWN = 60000;
+    private long timeStopEnd = 0;
+    private static final long TIME_STOP_DURATION = 5000;
+    private boolean supernovaUsed = false;
+    private boolean autoRepairUsed = false;
+
     // Temporary power-up buffs
     private boolean tempRapidFire = false;
     private long tempRapidFireEnd = 0;
@@ -150,6 +199,83 @@ public class PlayerShip {
                 case Skill.ULTIMATE_LASER:
                     hasUltimateLaser = true;
                     break;
+                case Skill.HOMING_MISSILES:
+                    hasHomingMissiles = true;
+                    break;
+                case Skill.CHAIN_LIGHTNING:
+                    hasChainLightning = true;
+                    break;
+                case Skill.BARRAGE_MODE:
+                    hasBarrageMode = true;
+                    break;
+                case Skill.PLASMA_CANNON:
+                    hasPlasmaCannon = true;
+                    break;
+                case Skill.REFLECT_BARRIER:
+                    hasReflectBarrier = true;
+                    break;
+                case Skill.AUTO_REPAIR:
+                    hasAutoRepair = true;
+                    break;
+                case Skill.FORTRESS_MODE:
+                    hasFortressMode = true;
+                    break;
+                case Skill.EMERGENCY_WARP:
+                    hasEmergencyWarp = true;
+                    break;
+                case Skill.NANO_SHIELD:
+                    hasNanoShield = true;
+                    nanoShieldActive = true;
+                    break;
+                case Skill.MAGNET_PULL:
+                    hasMagnetPull = true;
+                    break;
+                case Skill.LUCKY_DROPS:
+                    hasLuckyDrops = true;
+                    break;
+                case Skill.FREEZE_WAVE:
+                    hasFreezeWave = true;
+                    break;
+                case Skill.ALLY_DRONE:
+                    hasAllyDrone = true;
+                    break;
+                case Skill.TEMPORAL_SHIFT:
+                    hasTemporalShift = true;
+                    break;
+                case Skill.SALVAGE_BOT:
+                    hasSalvageBot = true;
+                    break;
+                case Skill.COMBO_MASTER:
+                    hasComboMaster = true;
+                    break;
+                case Skill.CRITICAL_HIT:
+                    hasCriticalHit = true;
+                    break;
+                case Skill.MOMENTUM:
+                    hasMomentum = true;
+                    break;
+                case Skill.SCAVENGER:
+                    hasScavenger = true;
+                    break;
+                case Skill.VETERANS_INSTINCT:
+                    hasVeteransInstinct = true;
+                    break;
+                case Skill.XP_SURGE:
+                    hasXPSurge = true;
+                    break;
+                case Skill.BLACK_HOLE:
+                    hasBlackHole = true;
+                    break;
+                case Skill.ALLY_SQUADRON:
+                    hasAllySquadron = true;
+                    break;
+                case Skill.TIME_STOP:
+                    hasTimeStop = true;
+                    break;
+                case Skill.SUPERNOVA:
+                    hasSupernova = true;
+                    supernovaUsed = false;
+                    break;
             }
         }
     }
@@ -191,6 +317,141 @@ public class PlayerShip {
     public boolean hasUltimateLaserSkill() { return hasUltimateLaser; }
     public boolean hasScoreMultiplierSkill() { return hasScoreMultiplier; }
     public boolean hasRegenerationSkill() { return hasRegeneration; }
+
+    // New skill getters
+    public boolean hasHomingMissilesSkill() { return hasHomingMissiles; }
+    public boolean hasChainLightningSkill() { return hasChainLightning; }
+    public boolean hasBarrageModeSkill() { return hasBarrageMode; }
+    public boolean hasPlasmaCannonSkill() { return hasPlasmaCannon; }
+    public boolean hasReflectBarrierSkill() { return hasReflectBarrier; }
+    public boolean hasAutoRepairSkill() { return hasAutoRepair; }
+    public boolean hasFortressModeSkill() { return hasFortressMode; }
+    public boolean hasEmergencyWarpSkill() { return hasEmergencyWarp; }
+    public boolean hasNanoShieldSkill() { return hasNanoShield; }
+    public boolean hasMagnetPullSkill() { return hasMagnetPull; }
+    public boolean hasLuckyDropsSkill() { return hasLuckyDrops; }
+    public boolean hasFreezeWaveSkill() { return hasFreezeWave; }
+    public boolean hasAllyDroneSkill() { return hasAllyDrone; }
+    public boolean hasTemporalShiftSkill() { return hasTemporalShift; }
+    public boolean hasSalvageBotSkill() { return hasSalvageBot; }
+    public boolean hasComboMasterSkill() { return hasComboMaster; }
+    public boolean hasCriticalHitSkill() { return hasCriticalHit; }
+    public boolean hasMomentumSkill() { return hasMomentum; }
+    public boolean hasScavengerSkill() { return hasScavenger; }
+    public boolean hasVeteransInstinctSkill() { return hasVeteransInstinct; }
+    public boolean hasXPSurgeSkill() { return hasXPSurge; }
+    public boolean hasBlackHoleSkill() { return hasBlackHole; }
+    public boolean hasAllySquadronSkill() { return hasAllySquadron; }
+    public boolean hasTimeStopSkill() { return hasTimeStop; }
+    public boolean hasSupernovaSkill() { return hasSupernova; }
+
+    // --- Homing missile shot counter ---
+    public boolean checkHomingShot() {
+        if (!hasHomingMissiles) return false;
+        homingShotCounter++;
+        if (homingShotCounter >= 5) {
+            homingShotCounter = 0;
+            return true;
+        }
+        return false;
+    }
+
+    // --- Barrage ---
+    public boolean tryBarrage() {
+        if (!hasBarrageMode) return false;
+        if (System.currentTimeMillis() < barrageCooldownEnd) return false;
+        barrageCooldownEnd = System.currentTimeMillis() + BARRAGE_COOLDOWN;
+        return true;
+    }
+    public long getBarrageCooldownRemaining() {
+        return Math.max(0, barrageCooldownEnd - System.currentTimeMillis());
+    }
+
+    // --- Emergency Warp ---
+    public boolean tryEmergencyWarp() {
+        if (!hasEmergencyWarp) return false;
+        if (System.currentTimeMillis() < emergencyWarpCooldownEnd) return false;
+        emergencyWarpCooldownEnd = System.currentTimeMillis() + EMERGENCY_WARP_COOLDOWN;
+        // Warp to random safe X position
+        x = (float) (Math.random() * (screenX - length_EGG));
+        targetX = x;
+        return true;
+    }
+
+    // --- Nano Shield ---
+    public boolean tryNanoShieldAbsorb() {
+        if (!hasNanoShield) return false;
+        if (!nanoShieldActive) return false;
+        nanoShieldActive = false;
+        nanoShieldCooldownEnd = System.currentTimeMillis() + NANO_SHIELD_COOLDOWN;
+        return true;
+    }
+
+    // --- Auto Repair ---
+    public boolean tryAutoRepair() {
+        if (!hasAutoRepair || autoRepairUsed) return false;
+        if (Math.random() < 0.30) {
+            autoRepairUsed = true;
+            return true;
+        }
+        return false;
+    }
+
+    // --- Black Hole ---
+    public boolean tryBlackHole() {
+        if (!hasBlackHole) return false;
+        if (System.currentTimeMillis() < blackHoleCooldownEnd) return false;
+        blackHoleCooldownEnd = System.currentTimeMillis() + BLACK_HOLE_COOLDOWN;
+        return true;
+    }
+    public long getBlackHoleCooldownRemaining() {
+        return Math.max(0, blackHoleCooldownEnd - System.currentTimeMillis());
+    }
+
+    // --- Ally Squadron ---
+    public boolean tryAllySquadron() {
+        if (!hasAllySquadron) return false;
+        if (System.currentTimeMillis() < allySquadronCooldownEnd) return false;
+        allySquadronCooldownEnd = System.currentTimeMillis() + ALLY_SQUADRON_COOLDOWN;
+        allySquadronEnd = System.currentTimeMillis() + ALLY_SQUADRON_DURATION;
+        return true;
+    }
+    public boolean isAllySquadronActive() {
+        return hasAllySquadron && System.currentTimeMillis() < allySquadronEnd;
+    }
+
+    // --- Time Stop ---
+    public boolean tryTimeStop() {
+        if (!hasTimeStop) return false;
+        if (System.currentTimeMillis() < timeStopCooldownEnd) return false;
+        timeStopCooldownEnd = System.currentTimeMillis() + TIME_STOP_COOLDOWN;
+        timeStopEnd = System.currentTimeMillis() + TIME_STOP_DURATION;
+        return true;
+    }
+    public boolean isTimeStopActive() {
+        return hasTimeStop && System.currentTimeMillis() < timeStopEnd;
+    }
+    public long getTimeStopCooldownRemaining() {
+        return Math.max(0, timeStopCooldownEnd - System.currentTimeMillis());
+    }
+
+    // --- Supernova ---
+    public boolean trySupernova() {
+        if (!hasSupernova || supernovaUsed) return false;
+        supernovaUsed = true;
+        return true;
+    }
+    public boolean isSupernovaAvailable() { return hasSupernova && !supernovaUsed; }
+
+    // --- Critical Hit ---
+    public boolean rollCriticalHit() {
+        return hasCriticalHit && Math.random() < 0.15;
+    }
+
+    // --- Reflect Barrier ---
+    public boolean rollReflect() {
+        return hasReflectBarrier && Math.random() < 0.15;
+    }
 
     // --- Ultimate Laser charge mechanic ---
 
@@ -306,6 +567,11 @@ public class PlayerShip {
 
         // Update ultimate laser charge
         updateCharge();
+
+        // Nano shield recharge
+        if (hasNanoShield && !nanoShieldActive && now > nanoShieldCooldownEnd) {
+            nanoShieldActive = true;
+        }
 
         rect.left = x;
         rect.right = x + length_EGG;

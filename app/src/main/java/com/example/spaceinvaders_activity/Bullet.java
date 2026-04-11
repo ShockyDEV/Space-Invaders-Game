@@ -25,6 +25,12 @@ public class Bullet {
     private boolean isBigLaser = false;
     private boolean isPiercing = false;
     private boolean isUltimate = false;
+    private boolean isHoming = false;
+    private boolean isCritical = false;
+
+    // Homing target
+    private float targetX = -1;
+    private float targetY = -1;
 
     // Visual
     private float glowPhase = 0;
@@ -54,6 +60,31 @@ public class Bullet {
         return b;
     }
 
+    // Create a homing missile bullet
+    public static Bullet createHoming(int screenY) {
+        Bullet b = new Bullet(screenY);
+        b.color = Color.rgb(255, 200, 0);
+        b.width = 14;
+        b.speed = 350;
+        b.isHoming = true;
+        return b;
+    }
+
+    // Create a critical hit bullet (3x damage)
+    public static Bullet createCritical(int screenY, boolean isBig, boolean isPierc) {
+        Bullet b;
+        if (isBig) {
+            b = createBigLaser(screenY);
+        } else if (isPierc) {
+            b = createPiercing(screenY);
+        } else {
+            b = new Bullet(screenY);
+        }
+        b.isCritical = true;
+        b.color = Color.rgb(255, 50, 50);
+        return b;
+    }
+
     // Create an ultimate laser beam
     public static Bullet createUltimate(int screenY) {
         Bullet b = new Bullet(screenY);
@@ -73,9 +104,19 @@ public class Bullet {
     public boolean isUltimate() { return isUltimate; }
 
     public int getDamage() {
-        if (isUltimate) return 5;
-        if (isBigLaser) return 2;
-        return 1;
+        int base;
+        if (isUltimate) base = 5;
+        else if (isBigLaser) base = 2;
+        else base = 1;
+        return isCritical ? base * 3 : base;
+    }
+
+    public boolean isHoming() { return isHoming; }
+    public boolean isCritical() { return isCritical; }
+
+    public void setHomingTarget(float tx, float ty) {
+        this.targetX = tx;
+        this.targetY = ty;
     }
 
     public void shoot(float startX, float startY, int direction) {
@@ -94,7 +135,18 @@ public class Bullet {
 
     public void update(long fps) {
         if (fps <= 0) return;
-        if (heading == UP) {
+
+        if (isHoming && targetX >= 0 && targetY >= 0) {
+            // Steer toward target
+            float dx = targetX - (x + width / 2f);
+            float dy = targetY - (y + height / 2f);
+            float dist = (float) Math.sqrt(dx * dx + dy * dy);
+            if (dist > 1) {
+                float steerStrength = 5f; // pixels per frame toward target
+                x += (dx / dist) * steerStrength;
+                y -= speed / fps; // still moves upward
+            }
+        } else if (heading == UP) {
             y -= speed / fps;
         } else {
             y += speed / fps;
@@ -157,6 +209,20 @@ public class Bullet {
             // Hot center line
             paint.setColor(Color.argb(200, 255, 255, 150));
             canvas.drawRect(cx - 2, y, cx + 2, y + height, paint);
+
+        } else if (isHoming) {
+            // Homing missile: gold/orange glow with trail
+            float trailLen = height * 0.8f;
+            paint.setColor(Color.argb(25, 255, 200, 0));
+            canvas.drawRect(x - 4, y, x + width + 4, y + height + trailLen, paint);
+            paint.setColor(Color.argb(60, 255, 180, 0));
+            canvas.drawRect(x - 2, y, x + width + 2, y + height + trailLen * 0.4f, paint);
+            // Core
+            paint.setColor(Color.rgb(255, 200, 50));
+            canvas.drawRect(rect, paint);
+            // Bright tip
+            paint.setColor(Color.argb(230, 255, 255, 200));
+            canvas.drawCircle(cx, y, width * 0.5f, paint);
 
         } else if (isPiercing) {
             // Piercing: teal energy bolt with trailing glow

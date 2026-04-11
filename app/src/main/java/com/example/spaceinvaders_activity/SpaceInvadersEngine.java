@@ -192,6 +192,16 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Apply skills to player
         playerShip.applySkills(activeSkills);
 
+        // Apply skill effects on game state
+        if (activeSkills != null) {
+            if (activeSkills.contains(Skill.COMBO_MASTER)) {
+                state.effectiveComboWindow = 3500; // 3.5s instead of 2s
+            }
+            if (activeSkills.contains(Skill.SALVAGE_BOT)) {
+                state.xpMultiplier = 1.5f; // +50% XP
+            }
+        }
+
         // Apply selected skin
         playerShip.applySkin(gameData.getSelectedSkin());
 
@@ -248,11 +258,13 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         int brickHeight = screenY / 40;
         Bitmap scaledBrick = Bitmap.createScaledBitmap(brickBitmap, brickWidth, brickHeight, false);
 
+        boolean fortress = playerShip.hasFortressModeSkill();
         for (int shelterNumber = 0; shelterNumber < config.numShelters; shelterNumber++) {
             for (int column = 0; column < 10; column++) {
                 for (int row = 0; row < 5; row++) {
                     bricks[numBricks] = new DefenceBrick(row, column, shelterNumber,
                             screenX, screenY, scaledBrick);
+                    if (fortress) bricks[numBricks].setHitPoints(3);
                     numBricks++;
                 }
             }
@@ -327,9 +339,13 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         boolean reachedBottom = false;
         int aliveCount = 0;
 
+        // Temporal Shift: slow all enemies 20%
+        float enemySpeedMult = playerShip.hasTemporalShiftSkill() ? 0.8f : 1.0f;
+
         for (Invader inv : invaders) {
             if (inv.getVisibility()) {
                 aliveCount++;
+                inv.setSpeedMultiplier(enemySpeedMult);
                 if (state.enemiesFrozen) {
                     inv.freeze(100);
                 }
@@ -550,9 +566,19 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                                         state.levelConfig.invaderBaseSpeed, false));
                     }
 
-                    // Power-up drop
-                    if (PowerUp.shouldDrop()) {
+                    // Power-up drop (Lucky Drops doubles chance)
+                    if (PowerUp.shouldDrop(playerShip.hasLuckyDropsSkill())) {
                         powerUps.add(PowerUp.createRandom(ex, ey, screenX));
+                    }
+
+                    // Scavenger: 25% chance kills drop micro-heal
+                    if (playerShip.hasScavengerSkill() && Math.random() < 0.25) {
+                        powerUps.add(new PowerUp(PowerUp.HEALTH, ex, ey, screenX));
+                    }
+
+                    // Chain Lightning: arc to 2 adjacent enemies
+                    if (playerShip.hasChainLightningSkill()) {
+                        chainLightning(ex, ey, inv);
                     }
 
                     if (!b.isPiercing()) {
@@ -599,9 +625,8 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             if (!hitSomething) {
                 for (int j = 0; j < numBricks; j++) {
                     if (bricks[j].getVisibility() && RectF.intersects(b.getRect(), bricks[j].getRect())) {
-                        bricks[j].setInvisible();
+                        bricks[j].takeHit();
                         playSfx(damageShelterID);
-                        // Brick debris effect
                         float bkx = bricks[j].getRect().centerX();
                         float bky = bricks[j].getRect().centerY();
                         particles.addDebris(bkx, bky, Color.rgb(0, 180, 0), 5);
@@ -624,6 +649,39 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         }
     }
 
+    /** Chain Lightning: arc damage to up to 2 nearby enemies on kill */
+    private void chainLightning(float originX, float originY, Invader killed) {
+        int arcs = 0;
+        float range = screenX / 4f; // arc range
+        for (Invader inv : invaders) {
+            if (arcs >= 2) break;
+            if (!inv.getVisibility() || inv == killed) continue;
+            float dx = inv.getX() + inv.getLength() / 2 - originX;
+            float dy = inv.getY() + inv.getHeight() / 2 - originY;
+            if (dx * dx + dy * dy < range * range) {
+                // Arc hits this enemy
+                float tx = inv.getX() + inv.getLength() / 2;
+                float ty = inv.getY() + inv.getHeight() / 2;
+
+                boolean defeated = inv.takeDamage(1);
+                if (defeated || inv.getHealth() <= 0) {
+                    inv.setInvisible();
+                    state.registerKill(inv.getPointValue(), playerShip.getScoreMultiplier());
+                    particles.addExplosion(tx, ty, Color.rgb(100, 180, 255), 10);
+                }
+
+                // Lightning arc VFX
+                particles.addImpactSparks(tx, ty, Color.rgb(100, 200, 255), 6, 0);
+                vfx.addShockwave(tx, ty, 40f, Color.rgb(100, 200, 255), 2f);
+                arcs++;
+            }
+        }
+        if (arcs > 0) {
+            particles.addBanner("CHAIN LIGHTNING!", Color.rgb(100, 200, 255),
+                    screenX, screenY, screenY / 18f);
+        }
+    }
+
     private void updateInvaderBullets() {
         for (int i = 0; i < invadersBullets.length; i++) {
             Bullet b = invadersBullets[i];
@@ -633,26 +691,52 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
             // Check vs player
             if (RectF.intersects(b.getRect(), playerShip.getRect())) {
+                float hitX = playerShip.getX() + playerShip.getLength_EGG() / 2;
+                float hitY = screenY - playerShip.getHeight_EGG() / 2;
+
+                // Reflect Barrier: 15% chance to reflect bullet back
+                if (playerShip.rollReflect()) {
+                    b.shoot(hitX, hitY, Bullet.UP); // Reflect upward
+                    particles.addSparkleBurst(hitX, hitY, Color.rgb(180, 100, 255), 10);
+                    vfx.addShockwave(hitX, hitY, 40f, Color.rgb(180, 100, 255), 2f);
+                    particles.addBanner("REFLECT!", Color.rgb(180, 100, 255),
+                            screenX, screenY, screenY / 15f);
+                    continue; // Don't destroy the bullet, it's now going up
+                }
+
                 if (playerShip.isShielded()) {
                     // Shield absorbs hit — sparkle deflection effect
-                    float shX = playerShip.getX() + playerShip.getLength_EGG() / 2;
-                    float shY = screenY - playerShip.getHeight_EGG() / 2;
-                    particles.addSparkleBurst(shX, shY, Color.rgb(80, 180, 255), 12);
-                    vfx.addShockwave(shX, shY, 50f, Color.rgb(80, 180, 255), 2f);
+                    particles.addSparkleBurst(hitX, hitY, Color.rgb(80, 180, 255), 12);
+                    vfx.addShockwave(hitX, hitY, 50f, Color.rgb(80, 180, 255), 2f);
                     particles.addBanner("SHIELD!", Color.rgb(0, 150, 255),
+                            screenX, screenY, screenY / 15f);
+                } else if (playerShip.tryNanoShieldAbsorb()) {
+                    // Nano Shield absorbs one hit, then goes on cooldown
+                    particles.addSparkleBurst(hitX, hitY, Color.rgb(0, 255, 200), 12);
+                    vfx.addShockwave(hitX, hitY, 50f, Color.rgb(0, 255, 200), 2f);
+                    particles.addBanner("NANO SHIELD!", Color.rgb(0, 255, 200),
+                            screenX, screenY, screenY / 15f);
+                } else if (playerShip.tryAutoRepair()) {
+                    // Auto Repair: 30% chance to survive a lethal hit
+                    particles.addSparkleBurst(hitX, hitY, Color.rgb(100, 255, 100), 12);
+                    particles.addBanner("AUTO REPAIR!", Color.rgb(100, 255, 100),
                             screenX, screenY, screenY / 15f);
                 } else {
                     state.onPlayerHit();
                     playSfx(playerExplodeID);
                     triggerShake(12f, 300);
-                    float hitX = playerShip.getX() + playerShip.getLength_EGG() / 2;
-                    float hitY = screenY - playerShip.getHeight_EGG() / 2;
                     particles.addExplosion(hitX, hitY, Color.RED, 15);
                     particles.addDebris(hitX, hitY, Color.rgb(200, 50, 50), 8);
                     particles.addImpactSparks(hitX, hitY, Color.rgb(255, 150, 50), 10, 90f);
-                    // VFX: red flash + small shockwave
                     vfx.triggerScreenFlash(Color.RED, 0.3f);
                     vfx.addShockwave(hitX, hitY, 80f, Color.RED, 3f);
+
+                    // Emergency Warp: teleport to safe spot on hit
+                    if (playerShip.tryEmergencyWarp()) {
+                        particles.addBanner("WARP!", Color.rgb(0, 200, 255),
+                                screenX, screenY, screenY / 15f);
+                        vfx.triggerScreenFlash(Color.rgb(0, 200, 255), 0.2f);
+                    }
 
                     if (state.gameOver) {
                         endGame();
@@ -666,7 +750,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             // Check vs bricks
             for (int j = 0; j < numBricks; j++) {
                 if (bricks[j].getVisibility() && RectF.intersects(b.getRect(), bricks[j].getRect())) {
-                    bricks[j].setInvisible();
+                    bricks[j].takeHit();
                     playSfx(damageShelterID);
                     float bkx = bricks[j].getRect().centerX();
                     float bky = bricks[j].getRect().centerY();
@@ -679,10 +763,18 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     }
 
     private void updatePowerUps() {
+        float playerCX = playerShip.getX() + playerShip.getLength_EGG() / 2;
+        boolean magnetPull = playerShip.hasMagnetPullSkill();
+
         Iterator<PowerUp> it = powerUps.iterator();
         while (it.hasNext()) {
             PowerUp pu = it.next();
             pu.update(fps);
+
+            // Magnet Pull: power-ups drift toward player
+            if (magnetPull && pu.isActive()) {
+                pu.attractToward(playerCX, screenY - playerShip.getHeight_EGG(), fps);
+            }
 
             if (pu.isOffScreen(screenY)) {
                 it.remove();
@@ -721,7 +813,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                 playerShip.applyPowerUp(PowerUp.SCORE_BOOST);
                 break;
             case PowerUp.FREEZE:
-                state.freezeEnemies();
+                state.freezeEnemies(playerShip.hasFreezeWaveSkill());
                 break;
         }
     }
@@ -748,6 +840,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
         // Campaign mode
         state.onLevelComplete();
+
+        // XP Surge: triple level-complete XP
+        if (playerShip.hasXPSurgeSkill()) {
+            state.xpEarned += GameData.XP_PER_LEVEL_COMPLETE * state.currentLevel * 2; // +2x on top of base
+        }
 
         particles.addBanner("LEVEL " + state.currentLevel + " COMPLETE!",
                 Color.rgb(100, 255, 100), screenX, screenY, screenY / 12f);
@@ -1058,20 +1155,44 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         float shipCenterX = playerShip.getX() + playerShip.getLength_EGG() / 2;
         float shipTopY = screenY - playerShip.getHeight_EGG();
 
+        // Homing Missiles: every 5th shot is a homing missile
+        if (playerShip.checkHomingShot()) {
+            Bullet homing = Bullet.createHoming(screenY);
+            homing.shoot(shipCenterX, shipTopY, Bullet.UP);
+            Invader target = findNearestInvader(shipCenterX, shipTopY);
+            if (target != null) {
+                homing.setHomingTarget(target.getX() + target.getLength() / 2,
+                        target.getY() + target.getHeight() / 2);
+            }
+            playerBullets.add(homing);
+            // VFX for homing missile
+            particles.addSparkleBurst(shipCenterX, shipTopY, Color.rgb(255, 200, 0), 8);
+        }
+
         if (playerShip.isMultiShot()) {
             // Multi-shot: 3 bullets in spread
             for (int i = -1; i <= 1; i++) {
                 Bullet b = createPlayerBullet();
+                applyMomentum(b);
                 b.shoot(shipCenterX + i * 30, shipTopY, Bullet.UP);
                 playerBullets.add(b);
             }
         } else {
             Bullet b = createPlayerBullet();
+            applyMomentum(b);
             b.shoot(shipCenterX, shipTopY, Bullet.UP);
             playerBullets.add(b);
         }
 
         playSfx(shootID);
+    }
+
+    /** Momentum skill: +5% bullet speed per combo kill */
+    private void applyMomentum(Bullet b) {
+        if (playerShip.hasMomentumSkill() && state.comboCount > 0) {
+            float bonus = 1.0f + state.comboCount * 0.05f;
+            b.speed *= bonus;
+        }
     }
 
     private void shootUltimate() {
@@ -1091,12 +1212,45 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
     private Bullet createPlayerBullet() {
         // Ultimate laser is fired only via hold-to-charge (shootUltimate), not here
+
+        // Critical Hit: 15% chance for 3x damage bullet
+        if (playerShip.rollCriticalHit()) {
+            return Bullet.createCritical(screenY, playerShip.isBigLaser(), playerShip.isPiercingShot());
+        }
+
         if (playerShip.isBigLaser()) {
             return Bullet.createBigLaser(screenY);
         } else if (playerShip.isPiercingShot()) {
             return Bullet.createPiercing(screenY);
         }
         return new Bullet(screenY);
+    }
+
+    /** Find the nearest visible invader to the given position */
+    private Invader findNearestInvader(float fromX, float fromY) {
+        Invader nearest = null;
+        float bestDist = Float.MAX_VALUE;
+        for (Invader inv : invaders) {
+            if (inv.getVisibility()) {
+                float dx = inv.getX() + inv.getLength() / 2 - fromX;
+                float dy = inv.getY() + inv.getHeight() / 2 - fromY;
+                float d = dx * dx + dy * dy;
+                if (d < bestDist) {
+                    bestDist = d;
+                    nearest = inv;
+                }
+            }
+        }
+        // Also check boss
+        if (boss != null && boss.getVisibility()) {
+            float dx = boss.getX() + boss.getLength() / 2 - fromX;
+            float dy = boss.getY() + boss.getHeight() / 2 - fromY;
+            float d = dx * dx + dy * dy;
+            if (d < bestDist) {
+                nearest = boss;
+            }
+        }
+        return nearest;
     }
 
     // ==================== LIFECYCLE ====================
