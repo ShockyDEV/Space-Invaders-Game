@@ -38,21 +38,37 @@ public class HUDRenderer {
         paint.setTextAlign(Paint.Align.LEFT);
         canvas.drawText("Score: " + state.score, 20, hudTextSize * 1.2f, paint);
 
-        // Lives (draw hearts)
-        float heartX = screenX * 0.4f;
-        paint.setColor(Color.RED);
-        paint.setTextSize(hudTextSize * 0.9f);
-        for (int i = 0; i < state.lives; i++) {
-            canvas.drawText("\u2665", heartX + i * hudTextSize * 1.1f, hudTextSize * 1.2f, paint);
+        // Lives (draw hearts) - not shown in time attack
+        if (state.gameMode != GameState.MODE_TIME_ATTACK) {
+            float heartX = screenX * 0.4f;
+            paint.setColor(Color.RED);
+            paint.setTextSize(hudTextSize * 0.9f);
+            for (int i = 0; i < state.lives; i++) {
+                canvas.drawText("\u2665", heartX + i * hudTextSize * 1.1f, hudTextSize * 1.2f, paint);
+            }
         }
 
-        // Level indicator
+        // Level/mode indicator
         paint.setColor(Color.argb(255, 100, 200, 255));
         paint.setTextSize(hudTextSize * 0.85f);
         paint.setTextAlign(Paint.Align.RIGHT);
-        String levelText = "Lvl " + state.currentLevel;
-        if (state.levelConfig != null) {
-            levelText += " - " + state.levelConfig.levelName;
+        String levelText;
+        if (state.gameMode == GameState.MODE_SURVIVAL) {
+            levelText = "Wave " + state.survivalWave;
+        } else if (state.gameMode == GameState.MODE_TIME_ATTACK) {
+            long remaining = state.getRemainingTimeAttackMs();
+            long secs = Math.max(0, remaining / 1000);
+            levelText = "TIME: " + secs / 60 + ":" + String.format(Locale.getDefault(), "%02d", secs % 60);
+            if (remaining < 15000) {
+                // Flash red when low on time
+                float flash = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() * 0.01);
+                paint.setColor(Color.argb((int) (255 * flash), 255, 50, 50));
+            }
+        } else {
+            levelText = "Lvl " + state.currentLevel;
+            if (state.levelConfig != null) {
+                levelText += " - " + state.levelConfig.levelName;
+            }
         }
         canvas.drawText(levelText, screenX - 20, hudTextSize * 1.2f, paint);
         paint.setTextAlign(Paint.Align.LEFT);
@@ -74,11 +90,16 @@ public class HUDRenderer {
         paint.setTextAlign(Paint.Align.CENTER);
         canvas.drawText("Kills: " + state.enemiesKilled, screenX / 2f, row2Y, paint);
 
-        // Game time
+        // Game time / mode info
         paint.setTextAlign(Paint.Align.RIGHT);
-        long elapsed = state.getGameDuration() / 1000;
-        String time = String.format(Locale.getDefault(), "%d:%02d", elapsed / 60, elapsed % 60);
-        canvas.drawText(time, screenX - 20, row2Y, paint);
+        if (state.gameMode == GameState.MODE_SURVIVAL) {
+            canvas.drawText("Next wave: " + (GameState.SURVIVAL_KILLS_PER_WAVE - state.survivalKillsThisWave) + " kills",
+                    screenX - 20, row2Y, paint);
+        } else {
+            long elapsed = state.getGameDuration() / 1000;
+            String time = String.format(Locale.getDefault(), "%d:%02d", elapsed / 60, elapsed % 60);
+            canvas.drawText(time, screenX - 20, row2Y, paint);
+        }
         paint.setTextAlign(Paint.Align.LEFT);
 
         // Active skills icons at bottom-left
@@ -221,7 +242,13 @@ public class HUDRenderer {
         canvas.drawText("Final Score: " + state.score, cx, y, paint);
         y += spacing;
 
-        canvas.drawText("Level Reached: " + state.currentLevel, cx, y, paint);
+        if (state.gameMode == GameState.MODE_SURVIVAL) {
+            canvas.drawText("Waves Survived: " + state.survivalWave, cx, y, paint);
+        } else if (state.gameMode == GameState.MODE_TIME_ATTACK) {
+            canvas.drawText("Rounds Cleared: " + (state.currentLevel - 1), cx, y, paint);
+        } else {
+            canvas.drawText("Level Reached: " + state.currentLevel, cx, y, paint);
+        }
         y += spacing;
 
         canvas.drawText("Enemies Defeated: " + state.enemiesKilled, cx, y, paint);

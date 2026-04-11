@@ -176,11 +176,15 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     }
 
     public void startNewGame(List<Integer> activeSkills, int difficulty) {
+        startNewGame(activeSkills, difficulty, GameState.MODE_CAMPAIGN);
+    }
+
+    public void startNewGame(List<Integer> activeSkills, int difficulty, int gameMode) {
         int extraLives = 0;
         if (activeSkills != null && activeSkills.contains(Skill.SHIELD)) {
             extraLives = 2;
         }
-        state.startNewGame(activeSkills, extraLives, difficulty);
+        state.startNewGame(activeSkills, extraLives, difficulty, gameMode);
         prepareLevel();
 
         // Apply skills to player
@@ -279,11 +283,17 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     // ==================== UPDATE ====================
 
     private void update() {
-        // Handle level transition
+        // Handle level transition (campaign mode only)
         if (state.levelTransition) {
             if (state.isLevelTransitionDone()) {
                 state.levelTransition = false;
             }
+            return;
+        }
+
+        // Time attack: check if time expired
+        if (state.isTimeAttackExpired()) {
+            endGame();
             return;
         }
 
@@ -615,6 +625,26 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     }
 
     private void onLevelComplete() {
+        if (state.gameMode == GameState.MODE_SURVIVAL) {
+            // Survival: wave complete, immediately spawn next wave
+            state.advanceSurvivalWave();
+            particles.addBanner("WAVE " + state.survivalWave + "!",
+                    Color.rgb(100, 255, 100), screenX, screenY, screenY / 12f);
+            prepareSurvivalWave();
+            return;
+        }
+
+        if (state.gameMode == GameState.MODE_TIME_ATTACK) {
+            // Time attack: enemies cleared, respawn immediately
+            state.currentLevel++;
+            state.levelConfig = GameConfig.getLevel(
+                    Math.min(state.currentLevel, GameConfig.MAX_LEVEL))
+                    .applyDifficulty(state.difficulty);
+            prepareLevel();
+            return;
+        }
+
+        // Campaign mode
         state.onLevelComplete();
 
         particles.addBanner("LEVEL " + state.currentLevel + " COMPLETE!",
@@ -631,6 +661,27 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Advance and prepare next level
         state.advanceLevel();
         prepareLevel();
+    }
+
+    private void prepareSurvivalWave() {
+        GameConfig config = state.levelConfig;
+        invaders.clear();
+        playerBullets.clear();
+        powerUps.clear();
+        nextBullet = 0;
+        for (int i = 0; i < invadersBullets.length; i++) {
+            invadersBullets[i] = new Bullet(screenY);
+        }
+
+        for (int column = 0; column < config.numColumns; column++) {
+            for (int row = 0; row < config.numRows; row++) {
+                int enemyType = config.getEnemyType(row, config.numRows);
+                Invader inv = new Invader(context, row, column, screenX, screenY,
+                        config.invaderBaseSpeed, config.shotChance, enemyType);
+                invaders.add(inv);
+            }
+        }
+        boss = null; // No bosses in survival
     }
 
     private void endGame() {

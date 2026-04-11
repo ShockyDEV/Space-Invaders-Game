@@ -265,6 +265,38 @@ public class SpaceInvadersActivity extends Activity {
 
             layout.addView(diffGroup);
 
+            // Game mode selector
+            TextView modeLabel = new TextView(this);
+            modeLabel.setText("Game Mode:");
+            modeLabel.setTextSize(16);
+            modeLabel.setTypeface(Typeface.DEFAULT_BOLD);
+            modeLabel.setPadding(0, 15, 0, 5);
+            layout.addView(modeLabel);
+
+            RadioGroup modeGroup = new RadioGroup(this);
+            modeGroup.setOrientation(RadioGroup.HORIZONTAL);
+
+            RadioButton campaignRb = new RadioButton(this);
+            campaignRb.setText("Campaign");
+            campaignRb.setTextSize(12);
+            campaignRb.setChecked(true);
+            campaignRb.setId(View.generateViewId());
+            modeGroup.addView(campaignRb);
+
+            RadioButton survivalRb = new RadioButton(this);
+            survivalRb.setText("Survival");
+            survivalRb.setTextSize(12);
+            survivalRb.setId(View.generateViewId());
+            modeGroup.addView(survivalRb);
+
+            RadioButton timeAttackRb = new RadioButton(this);
+            timeAttackRb.setText("Time Attack");
+            timeAttackRb.setTextSize(12);
+            timeAttackRb.setId(View.generateViewId());
+            modeGroup.addView(timeAttackRb);
+
+            layout.addView(modeGroup);
+
             builder.setView(layout);
             builder.setPositiveButton("START GAME", (dialog, which) -> {
                 List<Integer> selectedSkills = new ArrayList<>();
@@ -276,7 +308,10 @@ public class SpaceInvadersActivity extends Activity {
                 int difficulty = GameConfig.DIFF_NORMAL;
                 if (easyRb.isChecked()) difficulty = GameConfig.DIFF_EASY;
                 if (hardRb.isChecked()) difficulty = GameConfig.DIFF_HARD;
-                startGameWithSkills(selectedSkills, difficulty);
+                int mode = GameState.MODE_CAMPAIGN;
+                if (survivalRb.isChecked()) mode = GameState.MODE_SURVIVAL;
+                if (timeAttackRb.isChecked()) mode = GameState.MODE_TIME_ATTACK;
+                startGameWithSkills(selectedSkills, difficulty, mode);
             });
 
             builder.setNegativeButton("BACK", (dialog, which) -> showMainMenu());
@@ -288,11 +323,15 @@ public class SpaceInvadersActivity extends Activity {
     }
 
     private void startGameWithSkills(List<Integer> skills) {
-        spaceInvadersEngine.startNewGame(skills, GameConfig.DIFF_NORMAL);
+        spaceInvadersEngine.startNewGame(skills, GameConfig.DIFF_NORMAL, GameState.MODE_CAMPAIGN);
     }
 
     private void startGameWithSkills(List<Integer> skills, int difficulty) {
-        spaceInvadersEngine.startNewGame(skills, difficulty);
+        spaceInvadersEngine.startNewGame(skills, difficulty, GameState.MODE_CAMPAIGN);
+    }
+
+    private void startGameWithSkills(List<Integer> skills, int difficulty, int mode) {
+        spaceInvadersEngine.startNewGame(skills, difficulty, mode);
     }
 
     // ==================== SKILL TREE ====================

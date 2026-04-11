@@ -208,6 +208,31 @@ public class GameConfig {
         }
     }
 
+    // For survival mode (continuous waves, no bosses, increasing speed)
+    public static GameConfig getSurvivalWave(int wave) {
+        float speed = 80f + wave * 15f;
+        int shot = Math.max(150, 1000 - wave * 80);
+        int cols = Math.min(7, 4 + wave / 3);
+        int rows = Math.min(5, 3 + wave / 4);
+        int maxBullets = Math.min(16, 6 + wave);
+
+        // Gradually introduce harder enemy types
+        int normalW = Math.max(20, 60 - wave * 4);
+        int scoutW = Math.min(20, 10 + wave);
+        int tankW = Math.min(15, wave * 2);
+        int bossW = 0;
+        int shieldedW = wave >= 3 ? Math.min(20, (wave - 3) * 3) : 0;
+        int splitterW = wave >= 5 ? Math.min(15, (wave - 5) * 3) : 0;
+        int kamikazeW = wave >= 4 ? Math.min(20, (wave - 4) * 3) : 0;
+
+        return new GameConfig(wave, cols, rows, speed, shot, 2,
+                false, 0, 0,
+                1.10f + wave * 0.005f,
+                maxBullets,
+                "Wave " + wave,
+                new int[]{normalW, scoutW, tankW, bossW, shieldedW, splitterW, kamikazeW});
+    }
+
     // For endless mode beyond level 10
     public static GameConfig getEndlessLevel(int level) {
         float speed = 230f + (level - 10) * 20f;
