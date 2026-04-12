@@ -45,6 +45,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private DefenceBrick[] bricks = new DefenceBrick[400];
     private int numBricks;
     private List<PowerUp> powerUps = new ArrayList<>();
+    private List<AllyDrone> allyDrones = new ArrayList<>();
 
     // Systems
     private GameState state;
@@ -288,6 +289,13 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             }
         }
 
+        // Ally drones
+        allyDrones.clear();
+        if (playerShip.hasAllyDroneSkill()) {
+            float droneSize = screenX / 40f;
+            allyDrones.add(new AllyDrone(screenX / 8f, 0, droneSize));
+        }
+
         // Background music
         startMusic();
     }
@@ -507,6 +515,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Update power-ups
         updatePowerUps();
 
+        // Update ally drones
+        updateAllyDrones();
+
         // Update particles, VFX, environment, and screen shake
         particles.update(fps);
         vfx.update(fps);
@@ -682,6 +693,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                     // Scavenger: 25% chance kills drop micro-heal
                     if (playerShip.hasScavengerSkill() && Math.random() < 0.25) {
                         powerUps.add(new PowerUp(PowerUp.HEALTH, ex, ey, screenX));
+                        particles.addSparkleBurst(ex, ey, Color.rgb(50, 255, 100), 6);
                     }
 
                     // Chain Lightning: arc to 2 adjacent enemies
@@ -962,6 +974,32 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         }
     }
 
+    private void updateAllyDrones() {
+        float playerCX = playerShip.getX() + playerShip.getLength_EGG() / 2;
+        float playerCY = screenY - playerShip.getHeight_EGG();
+
+        Iterator<AllyDrone> it = allyDrones.iterator();
+        while (it.hasNext()) {
+            AllyDrone drone = it.next();
+            drone.update(fps, playerCX, playerCY);
+            if (!drone.isActive()) {
+                it.remove();
+                continue;
+            }
+            // Drone fires at nearest enemy
+            Invader target = findNearestInvader(drone.getX(), drone.getY());
+            if (target != null) {
+                Bullet b = drone.tryFire(screenY);
+                if (b != null) {
+                    b.setHomingTarget(target.getX() + target.getLength() / 2,
+                            target.getY() + target.getHeight() / 2);
+                    playerBullets.add(b);
+                    playSfx(sfxGen.allyDroneFireID);
+                }
+            }
+        }
+    }
+
     private void onLevelComplete() {
         if (state.gameMode == GameState.MODE_SURVIVAL) {
             // Survival: wave complete, immediately spawn next wave
@@ -1118,6 +1156,21 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         triggerShake(6f, 150);
         particles.addBanner("BARRAGE!", Color.rgb(255, 200, 0), screenX, screenY, screenY / 15f);
         vfx.triggerScreenFlash(Color.rgb(255, 200, 50), 0.15f);
+    }
+
+    /** Ally Squadron: spawn 3 temporary drones for 10s */
+    private boolean useAllySquadron() {
+        if (!playerShip.tryAllySquadron()) return false;
+        float droneSize = screenX / 45f;
+        for (int i = 0; i < 3; i++) {
+            float angle = (float) (i * 2 * Math.PI / 3);
+            allyDrones.add(AllyDrone.createTemporary(
+                    screenX / 7f, angle, droneSize, 10000));
+        }
+        particles.addBanner("ALLY SQUADRON!", Color.rgb(0, 200, 255),
+                screenX, screenY, screenY / 15f);
+        vfx.triggerScreenFlash(Color.rgb(50, 150, 255), 0.15f);
+        return true;
     }
 
     /** Black Hole: pull + destroy enemies in area */
@@ -1355,6 +1408,24 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             if (bossController != null) {
                 bossController.drawEffects(canvas, paint);
             }
+            // Veteran's Instinct: highlight boss weak point
+            if (playerShip.hasVeteransInstinctSkill() && bossController != null
+                    && !bossController.isInvulnerable()) {
+                float bcx = boss.getX() + boss.getLength() / 2;
+                float bcy = boss.getY() + boss.getHeight() / 2;
+                long now = System.currentTimeMillis();
+                float pulse = 0.5f + 0.5f * (float) Math.sin(now / 200.0);
+                float targetR = boss.getLength() / 4f;
+                paint.setColor(Color.argb((int) (120 * pulse), 255, 50, 50));
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(3);
+                canvas.drawCircle(bcx, bcy, targetR, paint);
+                canvas.drawCircle(bcx, bcy, targetR * 0.5f, paint);
+                canvas.drawLine(bcx - targetR, bcy, bcx + targetR, bcy, paint);
+                canvas.drawLine(bcx, bcy - targetR, bcx, bcy + targetR, paint);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setStrokeWidth(1);
+            }
         }
 
         // Player ship (with skin tint)
@@ -1362,6 +1433,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         canvas.drawBitmap(playerShip.getBitmap(), playerShip.getX(),
                 screenY - playerShip.getHeight_EGG(), shipPaint != null ? shipPaint : paint);
         playerShip.drawEffects(canvas, paint);
+
+        // Ally drones
+        for (AllyDrone drone : allyDrones) {
+            drone.draw(canvas, paint);
+        }
 
         // Player bullets
         for (Bullet b : playerBullets) {
@@ -1433,14 +1509,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     public boolean onTouchEvent(MotionEvent motionEvent) {
         int action = motionEvent.getAction() & MotionEvent.ACTION_MASK;
 
-        // Two finger tap = ultimate abilities (cascade: bomb > black hole > time stop > supernova)
+        // Two finger tap = ultimate abilities (cascade priority)
         if (motionEvent.getPointerCount() >= 2 && action == MotionEvent.ACTION_POINTER_DOWN) {
-            if (!useBomb()) {
-                if (!useBlackHole()) {
-                    if (!useTimeStop()) {
-                        useSupernova();
-                    }
-                }
+            if (!useBomb() && !useBlackHole() && !useAllySquadron()
+                    && !useTimeStop()) {
+                useSupernova();
             }
             return true;
         }
