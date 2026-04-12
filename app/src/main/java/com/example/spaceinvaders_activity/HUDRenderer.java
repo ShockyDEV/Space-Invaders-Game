@@ -1,11 +1,18 @@
 package com.example.spaceinvaders_activity;
 
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.RectF;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Renders all HUD/UI overlay elements: score, lives, level info, XP bar,
@@ -17,13 +24,36 @@ public class HUDRenderer {
     private float hudTextSize;
     private float smallTextSize;
     private float bigTextSize;
+    private Context context;
+    private Map<Integer, Bitmap> iconCache = new HashMap<>();
+    private Rect tmpSrc = new Rect();
+    private RectF tmpDst = new RectF();
 
     public HUDRenderer(int screenX, int screenY) {
+        this(null, screenX, screenY);
+    }
+
+    public HUDRenderer(Context context, int screenX, int screenY) {
+        this.context = context;
         this.screenX = screenX;
         this.screenY = screenY;
         this.hudTextSize = screenY / 25f;
         this.smallTextSize = screenY / 35f;
         this.bigTextSize = screenY / 10f;
+    }
+
+    private Bitmap getSkillIcon(int resId) {
+        if (context == null || resId == 0) return null;
+        Bitmap b = iconCache.get(resId);
+        if (b == null) {
+            try {
+                b = BitmapFactory.decodeResource(context.getResources(), resId);
+                if (b != null) iconCache.put(resId, b);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return b;
     }
 
     public void drawGameHUD(Canvas canvas, Paint paint, GameState state, PlayerShip player) {
@@ -227,19 +257,35 @@ public class HUDRenderer {
         for (int skillId : activeSkills) {
             Skill skill = Skill.getSkillById(skillId);
             if (skill != null) {
-                // Skill icon circle
-                paint.setColor(skill.iconColor);
-                paint.setAlpha(180);
-                canvas.drawCircle(startX + 12, startY, 12, paint);
+                Bitmap icon = getSkillIcon(skill.iconResId);
+                float iconSize = 26;
+                if (icon != null) {
+                    // Colored glow backdrop based on skill category color
+                    paint.setColor(skill.iconColor);
+                    paint.setAlpha(90);
+                    canvas.drawCircle(startX + 13, startY, 16, paint);
+
+                    tmpSrc.set(0, 0, icon.getWidth(), icon.getHeight());
+                    tmpDst.set(startX, startY - iconSize / 2f,
+                            startX + iconSize, startY + iconSize / 2f);
+                    paint.setAlpha(255);
+                    canvas.drawBitmap(icon, tmpSrc, tmpDst, paint);
+                } else {
+                    // Fallback: colored circle if icon fails to load
+                    paint.setColor(skill.iconColor);
+                    paint.setAlpha(180);
+                    canvas.drawCircle(startX + 12, startY, 12, paint);
+                }
 
                 // Skill name
                 paint.setColor(Color.WHITE);
-                paint.setAlpha(200);
-                canvas.drawText(skill.name, startX + 30, startY + 5, paint);
+                paint.setAlpha(220);
+                canvas.drawText(skill.name, startX + 34, startY + 5, paint);
 
-                startY -= 35;
+                startY -= 38;
             }
         }
+        paint.setAlpha(255);
     }
 
     public void drawLevelTransition(Canvas canvas, Paint paint, GameState state) {

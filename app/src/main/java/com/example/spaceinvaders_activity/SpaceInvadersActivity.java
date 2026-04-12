@@ -11,6 +11,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -252,6 +253,16 @@ public class SpaceInvadersActivity extends Activity {
                     cb.setTextSize(12);
                     cb.setPadding(8, 6, 8, 6);
                     cb.setTag(skill.id);
+                    if (skill.iconResId != 0) {
+                        try {
+                            android.graphics.drawable.Drawable icon =
+                                    getResources().getDrawable(skill.iconResId, null);
+                            int sz = (int) (32 * getResources().getDisplayMetrics().density);
+                            icon.setBounds(0, 0, sz, sz);
+                            cb.setCompoundDrawables(null, null, icon, null);
+                            cb.setCompoundDrawablePadding(12);
+                        } catch (Exception ignored) {}
+                    }
 
                     // Point budget enforcement
                     cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -489,6 +500,22 @@ public class SpaceInvadersActivity extends Activity {
                     skillRow.setOrientation(LinearLayout.HORIZONTAL);
                     skillRow.setPadding(12, 8, 8, 8);
                     skillRow.setGravity(Gravity.CENTER_VERTICAL);
+
+                    // Skill icon (left side)
+                    if (skill.iconResId != 0) {
+                        ImageView iconView = new ImageView(this);
+                        int sz = (int) (44 * getResources().getDisplayMetrics().density);
+                        LinearLayout.LayoutParams iconParams =
+                                new LinearLayout.LayoutParams(sz, sz);
+                        iconParams.setMargins(0, 0, 12, 0);
+                        iconView.setLayoutParams(iconParams);
+                        try {
+                            iconView.setImageResource(skill.iconResId);
+                        } catch (Exception ignored) {}
+                        if (!levelReached) iconView.setAlpha(0.3f);
+                        else if (!purchased) iconView.setAlpha(0.6f);
+                        skillRow.addView(iconView);
+                    }
 
                     // Skill info (left side)
                     LinearLayout infoCol = new LinearLayout(this);

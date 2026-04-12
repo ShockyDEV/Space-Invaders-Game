@@ -109,7 +109,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Init systems
         state = new GameState();
         gameData = new GameData(context);
-        hudRenderer = new HUDRenderer(screenX, screenY);
+        hudRenderer = new HUDRenderer(context, screenX, screenY);
         particles = new ParticleEffect();
         achievementManager = new AchievementManager(gameData);
         vfx = new VFXManager(screenX, screenY);
