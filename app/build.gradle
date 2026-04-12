@@ -20,6 +20,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Sign release with the debug keystore so APKs are installable
+            // without a dedicated upload key (fine for personal/sideload builds).
+            signingConfig signingConfigs.debug
         }
     }
     compileOptions {
