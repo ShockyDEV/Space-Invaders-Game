@@ -1688,7 +1688,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         Invader nearest = null;
         float bestDist = Float.MAX_VALUE;
         for (Invader inv : invaders) {
-            if (inv.getVisibility()) {
+            if (inv.getVisibility() && !inv.isCloaked()) {
                 float dx = inv.getX() + inv.getLength() / 2 - fromX;
                 float dy = inv.getY() + inv.getHeight() / 2 - fromY;
                 float d = dx * dx + dy * dy;

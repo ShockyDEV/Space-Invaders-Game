@@ -341,6 +341,11 @@ public class HUDRenderer {
         canvas.drawText("Enemies Defeated: " + state.enemiesKilled, cx, y, paint);
         y += spacing;
 
+        if (state.bossesKilled > 0) {
+            canvas.drawText("Bosses Defeated: " + state.bossesKilled, cx, y, paint);
+            y += spacing;
+        }
+
         canvas.drawText("Max Combo: " + state.maxCombo, cx, y, paint);
         y += spacing;
 

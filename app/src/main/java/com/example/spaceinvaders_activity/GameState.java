@@ -118,6 +118,7 @@ public class GameState {
         survivalKillsThisWave = 0;
         gameStartTime = System.currentTimeMillis();
         levelStartTime = gameStartTime;
+        perfectLevelCount = 0;
         gameOver = false;
         paused = false;
         levelTransition = false;

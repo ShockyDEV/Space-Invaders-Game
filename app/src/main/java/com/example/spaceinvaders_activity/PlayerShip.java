@@ -89,7 +89,7 @@ public class PlayerShip {
     private long allySquadronEnd = 0;
     private static final long ALLY_SQUADRON_DURATION = 10000;
     private long timeStopCooldownEnd = 0;
-    private static final long TIME_STOP_COOLDOWN = 60000;
+    private static final long TIME_STOP_COOLDOWN = 50000;
     private long timeStopEnd = 0;
     private static final long TIME_STOP_DURATION = 5000;
     private boolean supernovaUsed = false;
