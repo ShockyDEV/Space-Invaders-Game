@@ -53,6 +53,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private ParticleEffect particles;
     private AchievementManager achievementManager;
     private VFXManager vfx;
+    private BossController bossController;
 
     // Sound
     private SoundPool soundPool;
@@ -249,8 +250,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
         // Create boss if level has one
         boss = null;
+        bossController = null;
         if (config.hasBoss) {
             boss = new Invader(context, screenX, screenY, config.bossSpeed, config.bossHealth);
+            bossController = new BossController(config.bossType, boss, screenX, screenY);
         }
 
         // Build defence shelters
@@ -383,6 +386,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Update boss
         if (boss != null && boss.getVisibility()) {
             aliveCount++;
+            boss.setSpeedMultiplier(enemySpeedMult);
             boss.update(fps);
             // Boss shooting (more frequent)
             if (boss.takeAim(playerShip.getX(), playerShip.getLength_EGG())) {
@@ -396,6 +400,13 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             // Boss bounces at walls
             if (boss.getX() > screenX - boss.getLength() || boss.getX() < 0) {
                 boss.dropDownAndReverse();
+            }
+
+            // Boss AI special attacks
+            if (bossController != null) {
+                BossController.BossAction action = bossController.update(fps,
+                        playerShip.getX() + playerShip.getLength_EGG() / 2, state);
+                handleBossAction(action);
             }
         }
 
@@ -591,6 +602,15 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             // Check vs boss
             if (!hitSomething && boss != null && boss.getVisibility()
                     && RectF.intersects(b.getRect(), boss.getRect())) {
+                // Boss invulnerable during shield phases
+                if (bossController != null && bossController.isInvulnerable()) {
+                    float sx = boss.getX() + boss.getLength() / 2;
+                    float sy = boss.getY() + boss.getHeight() / 2;
+                    particles.addSparkleBurst(sx, sy, Color.rgb(100, 200, 255), 8);
+                    if (!b.isPiercing()) hitSomething = true;
+                    if (hitSomething) { it.remove(); }
+                    continue;
+                }
                 boolean defeated = boss.takeDamage(b.getDamage());
                 playSfx(invaderExplodeID);
 
@@ -947,6 +967,123 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         checkAchievements();
     }
 
+    // ==================== BOSS ACTION HANDLER ====================
+
+    private void handleBossAction(BossController.BossAction action) {
+        if (action == null || action.type == BossController.BossAction.TYPE_NONE) return;
+
+        switch (action.type) {
+            case BossController.BossAction.TYPE_MULTI_SHOT:
+                // Fire multiple bullets in spread
+                for (int i = 0; i < action.count; i++) {
+                    float spread = (i - action.count / 2f) * 30;
+                    if (invadersBullets[nextBullet] != null) {
+                        invadersBullets[nextBullet].shoot(
+                                action.x + spread, action.y, Bullet.DOWN);
+                    }
+                    nextBullet = (nextBullet + 1) % state.levelConfig.maxInvaderBullets;
+                }
+                break;
+
+            case BossController.BossAction.TYPE_SHIELD_PHASE:
+                particles.addSparkleBurst(action.x, action.y, Color.rgb(100, 200, 255), 15);
+                vfx.addShockwave(action.x, action.y, 80f, Color.rgb(100, 200, 255), 3f);
+                particles.addBanner("SHIELD!", Color.rgb(100, 200, 255),
+                        screenX, screenY, screenY / 18f);
+                break;
+
+            case BossController.BossAction.TYPE_TELEPORT_SHOOT:
+                // Fire homing bullet before teleporting
+                if (invadersBullets[nextBullet] != null) {
+                    invadersBullets[nextBullet].shoot(action.x, action.y, Bullet.DOWN);
+                }
+                nextBullet = (nextBullet + 1) % state.levelConfig.maxInvaderBullets;
+                vfx.triggerScreenFlash(Color.rgb(150, 50, 255), 0.15f);
+                particles.addSparkleBurst(action.x, action.y, Color.rgb(150, 50, 255), 12);
+                break;
+
+            case BossController.BossAction.TYPE_BEAM_WARNING:
+                particles.addBanner("WARNING!", Color.rgb(255, 150, 0),
+                        screenX, screenY, screenY / 18f);
+                break;
+
+            case BossController.BossAction.TYPE_BEAM:
+                // Beam hits player if within range
+                float playerCX = playerShip.getX() + playerShip.getLength_EGG() / 2;
+                if (Math.abs(playerCX - action.x) < 40) {
+                    state.onPlayerHit();
+                    playSfx(playerExplodeID);
+                    triggerShake(15f, 300);
+                    if (state.gameOver) { endGame(); }
+                }
+                vfx.triggerScreenFlash(Color.rgb(255, 180, 50), 0.25f);
+                break;
+
+            case BossController.BossAction.TYPE_FROST_ZONE:
+                // Spread shots + slow player
+                for (int i = 0; i < action.count; i++) {
+                    float spread = (i - action.count / 2f) * 40;
+                    if (invadersBullets[nextBullet] != null) {
+                        invadersBullets[nextBullet].shoot(
+                                action.x + spread, action.y, Bullet.DOWN);
+                    }
+                    nextBullet = (nextBullet + 1) % state.levelConfig.maxInvaderBullets;
+                }
+                particles.addBanner("FROST ZONE!", Color.rgb(100, 220, 255),
+                        screenX, screenY, screenY / 18f);
+                break;
+
+            case BossController.BossAction.TYPE_LIGHTNING:
+                playSfx(playerExplodeID); // Reuse explosion sound for lightning
+                triggerShake(8f, 200);
+                vfx.triggerScreenFlash(Color.rgb(200, 200, 255), 0.2f);
+                // Damage player if in lightning zone
+                float px = playerShip.getX() + playerShip.getLength_EGG() / 2;
+                int playerZone = (int) (px / (screenX / 3f));
+                if (playerZone >= 0 && playerZone < 3) {
+                    boolean[] zones = bossController.getLightningZones();
+                    if (zones[playerZone]) {
+                        state.onPlayerHit();
+                        playSfx(playerExplodeID);
+                        if (state.gameOver) { endGame(); }
+                    }
+                }
+                break;
+
+            case BossController.BossAction.TYPE_SPAWN_MINIONS:
+                for (int i = 0; i < action.count; i++) {
+                    float mx = action.x + (i - action.count / 2f) * 60;
+                    Invader minion = Invader.createSplitterChild(context,
+                            mx, action.y, screenX, screenY,
+                            state.levelConfig.invaderBaseSpeed * 1.2f,
+                            i % 2 == 0);
+                    invaders.add(minion);
+                }
+                particles.addBanner("MINIONS!", Color.rgb(255, 100, 100),
+                        screenX, screenY, screenY / 18f);
+                break;
+
+            case BossController.BossAction.TYPE_TIME_WARP:
+                particles.addBanner("TIME WARP!", Color.rgb(180, 100, 255),
+                        screenX, screenY, screenY / 15f);
+                vfx.triggerScreenFlash(Color.rgb(150, 50, 255), 0.2f);
+                break;
+
+            case BossController.BossAction.TYPE_SPEED_BURST:
+                // Temporarily increase boss speed (handled by boss AI)
+                break;
+
+            case BossController.BossAction.TYPE_VFX:
+                if (action.vfxSubtype == BossController.BossAction.VFX_TELEPORT_ARRIVE) {
+                    particles.addSparkleBurst(action.x, action.y, Color.rgb(150, 50, 255), 15);
+                    vfx.addShockwave(action.x, action.y, 60f, Color.rgb(150, 50, 255), 3f);
+                } else if (action.vfxSubtype == BossController.BossAction.VFX_VANISH) {
+                    particles.addSparkleBurst(action.x, action.y, Color.rgb(100, 0, 200), 10);
+                }
+                break;
+        }
+    }
+
     // ==================== DRAW ====================
 
     private void draw() {
@@ -989,8 +1126,15 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
         // Boss
         if (boss != null && boss.getVisibility()) {
-            canvas.drawBitmap(boss.getBitmap(), boss.getX(), boss.getY(), paint);
+            // Skip drawing if boss is invisible (Void Reaper)
+            if (bossController == null || !bossController.isInvisible()) {
+                canvas.drawBitmap(boss.getBitmap(), boss.getX(), boss.getY(), paint);
+            }
             boss.drawEffects(canvas, paint);
+            // Draw boss controller effects (shield, beam, frost, lightning)
+            if (bossController != null) {
+                bossController.drawEffects(canvas, paint);
+            }
         }
 
         // Player ship (with skin tint)
