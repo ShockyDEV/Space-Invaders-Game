@@ -378,6 +378,16 @@ public class GameData {
         return false;
     }
 
+    public int getPurchasedSkillCount() {
+        // Original 10 skills always unlocked
+        int count = 10;
+        String purchased = prefs.getString(KEY_PURCHASED_SKILLS, "");
+        if (!purchased.isEmpty()) {
+            count += purchased.split(",").length;
+        }
+        return count;
+    }
+
     // --- Reset ---
 
     public void resetAll() {

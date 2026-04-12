@@ -42,6 +42,7 @@ public class GameState {
     public int xpEarned = 0;
     public int enemiesKilled = 0;
     public int bossesKilled = 0;
+    public int perfectLevelCount = 0; // Levels completed without losing a life
 
     // Combo system
     public int comboCount = 0;
@@ -185,6 +186,11 @@ public class GameState {
 
     public void onLevelComplete() {
         xpEarned += GameData.XP_PER_LEVEL_COMPLETE * currentLevel;
+
+        // Track perfect levels (no lives lost)
+        if (lives >= startingLives) {
+            perfectLevelCount++;
+        }
 
         // Star rating: based on lives remaining vs starting
         float lifePercent = (float) lives / startingLives;

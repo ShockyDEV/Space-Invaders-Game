@@ -135,7 +135,86 @@ public class HUDRenderer {
             paint.setTextAlign(Paint.Align.RIGHT);
             canvas.drawText("[BOMB READY - 2 finger tap]", screenX - 20, bottomY, paint);
             paint.setTextAlign(Paint.Align.LEFT);
+            bottomY -= smallTextSize * 1.5f;
         }
+
+        // Cooldown indicators for ultimate skills
+        drawUltimateCooldowns(canvas, paint, player, bottomY);
+
+        // Zone progress bar (bottom center)
+        if (state.gameMode == GameState.MODE_CAMPAIGN && state.levelConfig != null) {
+            drawZoneProgress(canvas, paint, state);
+        }
+    }
+
+    private void drawUltimateCooldowns(Canvas canvas, Paint paint, PlayerShip player, float startY) {
+        paint.setTextSize(smallTextSize * 0.85f);
+        paint.setTextAlign(Paint.Align.RIGHT);
+        float y = startY;
+
+        // Black Hole
+        long cd = player.getBlackHoleCooldownRemaining();
+        if (cd > 0) {
+            paint.setColor(Color.argb(150, 120, 50, 255));
+            canvas.drawText("BLACK HOLE: " + (cd / 1000) + "s", screenX - 20, y, paint);
+            y -= smallTextSize * 1.3f;
+        }
+
+        // Time Stop
+        cd = player.getTimeStopCooldownRemaining();
+        if (cd > 0) {
+            paint.setColor(Color.argb(150, 180, 100, 255));
+            canvas.drawText("TIME STOP: " + (cd / 1000) + "s", screenX - 20, y, paint);
+            y -= smallTextSize * 1.3f;
+        }
+
+        // Barrage
+        cd = player.getBarrageCooldownRemaining();
+        if (cd > 0) {
+            paint.setColor(Color.argb(150, 255, 200, 50));
+            canvas.drawText("BARRAGE: " + (cd / 1000) + "s", screenX - 20, y, paint);
+            y -= smallTextSize * 1.3f;
+        }
+
+        // Supernova
+        if (player.isSupernovaAvailable()) {
+            float flash = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() * 0.003);
+            paint.setColor(Color.argb((int) (200 * flash), 255, 255, 100));
+            canvas.drawText("[SUPERNOVA READY]", screenX - 20, y, paint);
+        }
+
+        paint.setTextAlign(Paint.Align.LEFT);
+    }
+
+    private void drawZoneProgress(Canvas canvas, Paint paint, GameState state) {
+        float barWidth = screenX * 0.3f;
+        float barHeight = 8;
+        float barX = (screenX - barWidth) / 2f;
+        float barY = screenY - 15;
+
+        // Background bar
+        paint.setColor(Color.argb(80, 255, 255, 255));
+        canvas.drawRect(barX, barY, barX + barWidth, barY + barHeight, paint);
+
+        // Progress fill
+        float progress = (state.currentLevel - 1) / 100f;
+        paint.setColor(Color.argb(180, 100, 200, 255));
+        canvas.drawRect(barX, barY, barX + barWidth * Math.min(1f, progress), barY + barHeight, paint);
+
+        // Zone markers (every 10 levels)
+        paint.setColor(Color.argb(120, 255, 255, 255));
+        for (int i = 1; i <= 9; i++) {
+            float mx = barX + barWidth * (i / 10f);
+            canvas.drawRect(mx - 1, barY - 2, mx + 1, barY + barHeight + 2, paint);
+        }
+
+        // Zone label
+        paint.setTextSize(smallTextSize * 0.65f);
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setColor(Color.argb(180, 200, 200, 200));
+        int zone = state.levelConfig.zone + 1;
+        canvas.drawText("Zone " + zone + "/10", screenX / 2f, barY - 3, paint);
+        paint.setTextAlign(Paint.Align.LEFT);
     }
 
     private void drawActiveSkills(Canvas canvas, Paint paint, List<Integer> activeSkills) {
@@ -198,12 +277,21 @@ public class HUDRenderer {
             paint.setTextSize(hudTextSize * 1.3f);
             canvas.drawText(state.levelConfig.levelName, screenX / 2f, screenY * 0.55f, paint);
 
+            // Zone name (below level name)
+            if (progress > 0.3f) {
+                float zoneAlpha = Math.min(1f, (progress - 0.3f) * 3f);
+                paint.setColor(Color.argb((int) (180 * zoneAlpha), 150, 200, 255));
+                paint.setTextSize(hudTextSize * 0.9f);
+                int zone = state.levelConfig.zone + 1;
+                canvas.drawText("Zone " + zone + "/10", screenX / 2f, screenY * 0.60f, paint);
+            }
+
             // Boss warning
             if (state.levelConfig.hasBoss && progress > 0.5f) {
                 float warnAlpha = 0.5f + 0.5f * (float) Math.sin(elapsed * 0.008);
                 paint.setColor(Color.argb((int) (255 * warnAlpha), 255, 50, 50));
                 paint.setTextSize(hudTextSize);
-                canvas.drawText("!! WARNING: BOSS BATTLE !!", screenX / 2f, screenY * 0.65f, paint);
+                canvas.drawText("!! WARNING: BOSS BATTLE !!", screenX / 2f, screenY * 0.68f, paint);
             }
         }
 
