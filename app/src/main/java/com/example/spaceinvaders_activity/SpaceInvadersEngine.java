@@ -55,6 +55,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private VFXManager vfx;
     private BossController bossController;
     private EnvironmentRenderer envRenderer;
+    private SFXGenerator sfxGen;
 
     // Sound
     private SoundPool soundPool;
@@ -84,6 +85,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private float touchDownX = 0, touchDownY = 0;
     private boolean isHoldingForUltimate = false;
     private static final float HOLD_MOVE_THRESHOLD = 40f;
+
+    // Double-tap detection for barrage
+    private long lastTapTime = 0;
+    private static final long DOUBLE_TAP_THRESHOLD = 300; // ms
 
     // Audio volume settings
     private float musicVolume = 0.8f;
@@ -137,6 +142,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         } catch (IOException e) {
             Log.e("SpaceInvaders", "Failed to load sound files", e);
         }
+
+        // Generate procedural sound effects
+        sfxGen = new SFXGenerator();
+        sfxGen.generateAll(soundPool);
 
         // Load volume settings
         reloadSettings();
@@ -259,6 +268,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         if (config.hasBoss) {
             boss = new Invader(context, screenX, screenY, config.bossSpeed, config.bossHealth);
             bossController = new BossController(config.bossType, boss, screenX, screenY);
+            playSfx(sfxGen.bossAppearID);
         }
 
         // Build defence shelters
@@ -293,6 +303,28 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         } else if (!backgroundMusic.isPlaying()) {
             backgroundMusic.setVolume(musicVolume, musicVolume);
             backgroundMusic.start();
+        }
+        // Boss music: increase tempo for boss levels
+        setBossMusicMode(state.levelConfig != null && state.levelConfig.hasBoss);
+    }
+
+    /** Switch music intensity for boss fights (faster tempo + slightly higher pitch) */
+    private void setBossMusicMode(boolean isBoss) {
+        if (backgroundMusic == null) return;
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                android.media.PlaybackParams params = backgroundMusic.getPlaybackParams();
+                if (isBoss) {
+                    params.setSpeed(1.25f); // 25% faster for boss intensity
+                    params.setPitch(1.1f);  // Slightly higher pitch
+                } else {
+                    params.setSpeed(1.0f);
+                    params.setPitch(1.0f);
+                }
+                backgroundMusic.setPlaybackParams(params);
+            }
+        } catch (Exception e) {
+            // Fallback: some devices may not support playback params
         }
     }
 
@@ -747,12 +779,13 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                 }
             }
         }
-        // VFX
+        // VFX + SFX
         particles.addBigExplosion(bx, by);
         vfx.addShockwave(bx, by, blastRadius, Color.rgb(255, 150, 0), 5f);
         vfx.triggerScreenFlash(Color.rgb(255, 100, 0), 0.15f);
         triggerShake(8f, 200);
         particles.addBanner("BOMB!", Color.rgb(255, 150, 0), screenX, screenY, screenY / 18f);
+        playSfx(sfxGen.bomberExplodeID);
     }
 
     /** Chain Lightning: arc damage to up to 2 nearby enemies on kill */
@@ -785,6 +818,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         if (arcs > 0) {
             particles.addBanner("CHAIN LIGHTNING!", Color.rgb(100, 200, 255),
                     screenX, screenY, screenY / 18f);
+            playSfx(sfxGen.chainLightningID);
         }
     }
 
@@ -807,6 +841,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                     vfx.addShockwave(hitX, hitY, 40f, Color.rgb(180, 100, 255), 2f);
                     particles.addBanner("REFLECT!", Color.rgb(180, 100, 255),
                             screenX, screenY, screenY / 15f);
+                    playSfx(sfxGen.shieldReflectID);
                     continue; // Don't destroy the bullet, it's now going up
                 }
 
@@ -842,6 +877,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                         particles.addBanner("WARP!", Color.rgb(0, 200, 255),
                                 screenX, screenY, screenY / 15f);
                         vfx.triggerScreenFlash(Color.rgb(0, 200, 255), 0.2f);
+                        playSfx(sfxGen.warpID);
                     }
 
                     if (state.gameOver) {
@@ -904,6 +940,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         vfx.triggerScreenFlash(pu.getColor(), 0.12f);
         state.powerupsCollectedThisGame++;
         gameData.addPowerupCollected();
+        playSfx(sfxGen.powerUpCollectID);
 
         switch (pu.getType()) {
             case PowerUp.HEALTH:
@@ -920,6 +957,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                 break;
             case PowerUp.FREEZE:
                 state.freezeEnemies(playerShip.hasFreezeWaveSkill());
+                playSfx(sfxGen.freezeWaveID);
                 break;
         }
     }
@@ -963,8 +1001,17 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Check achievements
         checkAchievements();
 
+        // Track zone change for transition SFX
+        int oldZone = state.levelConfig.zone;
+
         // Advance and prepare next level
         state.advanceLevel();
+
+        // Zone transition sound when entering new zone
+        if (state.levelConfig.zone != oldZone) {
+            playSfx(sfxGen.zoneTransitionID);
+        }
+
         prepareLevel();
     }
 
@@ -1023,8 +1070,8 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     }
 
     // Bomb skill - clear all visible enemies
-    public void useBomb() {
-        if (!playerShip.hasBombSkill() || !playerShip.isBombAvailable()) return;
+    public boolean useBomb() {
+        if (!playerShip.hasBombSkill() || !playerShip.isBombAvailable()) return false;
         playerShip.useBomb();
         state.bombUsedThisLevel = true;
 
@@ -1051,6 +1098,90 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
         // Check bomb master achievement
         checkAchievements();
+        return true;
+    }
+
+    // --- Ultimate Skill Activations ---
+
+    /** Barrage Mode: fire 8 bullets in all directions */
+    private void useBarrage() {
+        if (!playerShip.tryBarrage()) return;
+        float cx = playerShip.getX() + playerShip.getLength_EGG() / 2;
+        float cy = screenY - playerShip.getHeight_EGG();
+        for (int i = 0; i < 8; i++) {
+            Bullet b = new Bullet(screenY);
+            float angle = (float) (i * Math.PI / 4);
+            b.shoot(cx + (float) Math.cos(angle) * 20, cy + (float) Math.sin(angle) * 20, Bullet.UP);
+            playerBullets.add(b);
+        }
+        playSfx(sfxGen.barrageFireID);
+        triggerShake(6f, 150);
+        particles.addBanner("BARRAGE!", Color.rgb(255, 200, 0), screenX, screenY, screenY / 15f);
+        vfx.triggerScreenFlash(Color.rgb(255, 200, 50), 0.15f);
+    }
+
+    /** Black Hole: pull + destroy enemies in area */
+    private boolean useBlackHole() {
+        if (!playerShip.tryBlackHole()) return false;
+        float cx = screenX / 2f;
+        float cy = screenY / 3f;
+        float radius = screenX / 3f;
+        int kills = 0;
+        for (Invader inv : invaders) {
+            if (!inv.getVisibility()) continue;
+            float dx = (inv.getX() + inv.getLength() / 2) - cx;
+            float dy = (inv.getY() + inv.getHeight() / 2) - cy;
+            if (dx * dx + dy * dy < radius * radius) {
+                inv.setInvisible();
+                state.registerKill(inv.getPointValue(), playerShip.getScoreMultiplier());
+                kills++;
+            }
+        }
+        playSfx(sfxGen.blackHoleID);
+        triggerShake(10f, 500);
+        particles.addBanner("BLACK HOLE!", Color.rgb(80, 0, 200), screenX, screenY, screenY / 12f);
+        vfx.addShockwave(cx, cy, radius, Color.rgb(100, 0, 255), 8f);
+        vfx.triggerScreenFlash(Color.rgb(60, 0, 150), 0.3f);
+        particles.addExplosion(cx, cy, Color.rgb(120, 50, 255), 20);
+        return true;
+    }
+
+    /** Time Stop: freeze everything 5s, player still shoots */
+    private boolean useTimeStop() {
+        if (!playerShip.tryTimeStop()) return false;
+        state.freezeEnemies(true); // Extended freeze
+        playSfx(sfxGen.timeStopID);
+        triggerShake(5f, 300);
+        particles.addBanner("TIME STOP!", Color.rgb(180, 100, 255), screenX, screenY, screenY / 12f);
+        vfx.triggerScreenFlash(Color.rgb(150, 50, 255), 0.4f);
+        return true;
+    }
+
+    /** Supernova: screen-wide 10-damage explosion (1 use per game) */
+    private boolean useSupernova() {
+        if (!playerShip.trySupernova()) return false;
+        int kills = 0;
+        for (Invader inv : invaders) {
+            if (inv.getVisibility()) {
+                inv.takeDamage(10);
+                if (!inv.getVisibility()) {
+                    float ex = inv.getX() + inv.getLength() / 2;
+                    float ey = inv.getY() + inv.getHeight() / 2;
+                    particles.addBigExplosion(ex, ey);
+                    state.registerKill(inv.getPointValue(), playerShip.getScoreMultiplier());
+                    kills++;
+                }
+            }
+        }
+        if (boss != null && boss.getVisibility()) {
+            boss.takeDamage(10);
+        }
+        playSfx(sfxGen.supernovaID);
+        triggerShake(20f, 600);
+        particles.addBanner("SUPERNOVA!", Color.rgb(255, 255, 100), screenX, screenY, screenY / 10f);
+        vfx.addShockwave(screenX / 2f, screenY / 2f, screenX, Color.rgb(255, 255, 200), 12f);
+        vfx.triggerScreenFlash(Color.WHITE, 0.6f);
+        return true;
     }
 
     // ==================== BOSS ACTION HANDLER ====================
@@ -1302,9 +1433,15 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     public boolean onTouchEvent(MotionEvent motionEvent) {
         int action = motionEvent.getAction() & MotionEvent.ACTION_MASK;
 
-        // Two finger tap = bomb
+        // Two finger tap = ultimate abilities (cascade: bomb > black hole > time stop > supernova)
         if (motionEvent.getPointerCount() >= 2 && action == MotionEvent.ACTION_POINTER_DOWN) {
-            useBomb();
+            if (!useBomb()) {
+                if (!useBlackHole()) {
+                    if (!useTimeStop()) {
+                        useSupernova();
+                    }
+                }
+            }
             return true;
         }
 
@@ -1375,6 +1512,13 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                     playerShip.cancelCharge();
                     // Normal shot
                     if (motionEvent.getY() < screenY - screenY / 8f) {
+                        // Double-tap detection for Barrage Mode
+                        long now = System.currentTimeMillis();
+                        if (now - lastTapTime < DOUBLE_TAP_THRESHOLD) {
+                            useBarrage(); // fires if skill equipped + off cooldown
+                        }
+                        lastTapTime = now;
+
                         if (playerShip.tryShoot()) {
                             shootBullets();
                         }
@@ -1403,8 +1547,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                         target.getY() + target.getHeight() / 2);
             }
             playerBullets.add(homing);
-            // VFX for homing missile
+            // VFX + SFX for homing missile
             particles.addSparkleBurst(shipCenterX, shipTopY, Color.rgb(255, 200, 0), 8);
+            playSfx(sfxGen.homingMissileID);
         }
 
         if (playerShip.isMultiShot()) {
@@ -1453,6 +1598,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
 
         // Critical Hit: 15% chance for 3x damage bullet
         if (playerShip.rollCriticalHit()) {
+            playSfx(sfxGen.criticalHitID);
             return Bullet.createCritical(screenY, playerShip.isBigLaser(), playerShip.isPiercingShot());
         }
 
