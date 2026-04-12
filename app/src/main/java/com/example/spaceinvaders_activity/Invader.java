@@ -502,88 +502,177 @@ public class Invader {
             paint.setTextAlign(Paint.Align.LEFT);
         }
 
-        // Enemy type indicator
+        // Enemy type visual differentiation (prominent overlays for gameplay readability)
         if (!isBoss) {
             float cx = x + length / 2;
+            float cy = y + height / 2;
+            float hw = length / 2;
+            long now = System.currentTimeMillis();
+
             switch (enemyType) {
                 case TYPE_SCOUT:
-                    paint.setColor(Color.argb(150, 255, 255, 0));
-                    canvas.drawCircle(cx, y - 3, 3, paint);
+                    // Yellow speed streaks behind the scout
+                    paint.setColor(Color.argb(120, 255, 255, 0));
+                    canvas.drawRect(x - 6, cy - 2, x, cy + 2, paint);
+                    canvas.drawRect(x + length, cy - 2, x + length + 6, cy + 2, paint);
+                    // Yellow tint
+                    paint.setColor(Color.argb(35, 255, 255, 0));
+                    canvas.drawRect(rect, paint);
                     break;
+
                 case TYPE_TANK:
-                    paint.setColor(Color.argb(150, 255, 100, 0));
-                    canvas.drawCircle(cx, y - 3, 4, paint);
+                    // Orange armor plating outline
+                    paint.setColor(Color.argb(160, 255, 120, 0));
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(3);
+                    canvas.drawRect(x - 3, y - 3, x + length + 3, y + height + 3, paint);
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setStrokeWidth(1);
+                    // Orange tint
+                    paint.setColor(Color.argb(40, 255, 120, 0));
+                    canvas.drawRect(rect, paint);
+                    // Corner rivets
+                    paint.setColor(Color.argb(200, 255, 150, 0));
+                    canvas.drawCircle(x, y, 3, paint);
+                    canvas.drawCircle(x + length, y, 3, paint);
+                    canvas.drawCircle(x, y + height, 3, paint);
+                    canvas.drawCircle(x + length, y + height, 3, paint);
                     break;
+
                 case TYPE_SHIELDED:
                     if (hasShield) {
-                        // Blue hexagonal shield overlay
-                        paint.setColor(Color.argb(100, 50, 150, 255));
-                        canvas.drawRect(x - 2, y - 2, x + length + 2, y + height + 2, paint);
-                        paint.setColor(Color.argb(180, 100, 200, 255));
-                        canvas.drawCircle(cx, y - 4, 4, paint);
+                        // Blue shield bubble around the invader
+                        float shieldPulse = 0.7f + 0.3f * (float) Math.sin(now / 300.0);
+                        paint.setColor(Color.argb((int) (80 * shieldPulse), 50, 150, 255));
+                        canvas.drawCircle(cx, cy, hw * 1.3f, paint);
+                        paint.setColor(Color.argb((int) (150 * shieldPulse), 100, 200, 255));
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(2);
+                        canvas.drawCircle(cx, cy, hw * 1.3f, paint);
+                        paint.setStyle(Paint.Style.FILL);
+                        paint.setStrokeWidth(1);
                     } else {
-                        paint.setColor(Color.argb(80, 50, 100, 200));
-                        canvas.drawCircle(cx, y - 3, 3, paint);
+                        // Broken shield remnants
+                        paint.setColor(Color.argb(60, 50, 100, 200));
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(1);
+                        canvas.drawArc(x - 3, y - 3, x + length + 3, y + height + 3,
+                                -30, 60, false, paint);
+                        canvas.drawArc(x - 3, y - 3, x + length + 3, y + height + 3,
+                                150, 60, false, paint);
+                        paint.setStyle(Paint.Style.FILL);
                     }
                     break;
+
                 case TYPE_SPLITTER:
-                    // Green diamond marker
-                    paint.setColor(Color.argb(180, 50, 255, 50));
-                    float d = 4;
-                    canvas.drawLine(cx, y - d - 3, cx + d, y - 3, paint);
-                    canvas.drawLine(cx + d, y - 3, cx, y + d - 3, paint);
-                    canvas.drawLine(cx, y + d - 3, cx - d, y - 3, paint);
-                    canvas.drawLine(cx - d, y - 3, cx, y - d - 3, paint);
+                    // Green mitosis marks (two halves) indicating it will split
+                    paint.setColor(Color.argb(120, 50, 255, 50));
+                    canvas.drawLine(cx, y - 2, cx, y + height + 2, paint);
+                    // Green glow
+                    paint.setColor(Color.argb(30, 50, 255, 50));
+                    canvas.drawRect(rect, paint);
+                    // Diamond markers on sides
+                    paint.setColor(Color.argb(200, 80, 255, 80));
+                    float d = 5;
+                    canvas.drawLine(x - d, cy, x, cy - d, paint);
+                    canvas.drawLine(x, cy - d, x + d, cy, paint);
+                    canvas.drawLine(x + length - d, cy, x + length, cy - d, paint);
+                    canvas.drawLine(x + length, cy - d, x + length + d, cy, paint);
                     break;
+
                 case TYPE_KAMIKAZE:
-                    // Red flame trail effect
-                    float flicker = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() * 0.02);
-                    paint.setColor(Color.argb((int) (200 * flicker), 255, 50, 0));
-                    canvas.drawCircle(cx, y + height + 4, 5 * flicker, paint);
-                    paint.setColor(Color.argb((int) (150 * flicker), 255, 150, 0));
-                    canvas.drawCircle(cx - 3, y + height + 6, 3 * flicker, paint);
-                    canvas.drawCircle(cx + 3, y + height + 6, 3 * flicker, paint);
+                    // Red flame trail (prominent, visible from distance)
+                    float flicker = 0.5f + 0.5f * (float) Math.sin(now * 0.02);
+                    // Main engine flame
+                    paint.setColor(Color.argb((int) (220 * flicker), 255, 50, 0));
+                    canvas.drawCircle(cx, y + height + 6, 7 * flicker, paint);
+                    paint.setColor(Color.argb((int) (180 * flicker), 255, 150, 0));
+                    canvas.drawCircle(cx, y + height + 8, 5 * flicker, paint);
+                    paint.setColor(Color.argb((int) (150 * flicker), 255, 255, 100));
+                    canvas.drawCircle(cx, y + height + 4, 3 * flicker, paint);
+                    // Side flames
+                    paint.setColor(Color.argb((int) (120 * flicker), 255, 80, 0));
+                    canvas.drawCircle(cx - hw * 0.5f, y + height + 4, 4 * flicker, paint);
+                    canvas.drawCircle(cx + hw * 0.5f, y + height + 4, 4 * flicker, paint);
+                    // Red tint
+                    paint.setColor(Color.argb(30, 255, 0, 0));
+                    canvas.drawRect(rect, paint);
                     break;
+
                 case TYPE_HEALER:
-                    // Green aura pulse
-                    float healPulse = 0.4f + 0.6f * (float) Math.sin(System.currentTimeMillis() / 400.0);
-                    paint.setColor(Color.argb((int) (60 * healPulse), 50, 255, 50));
-                    canvas.drawCircle(cx, y + height / 2, length * 0.6f, paint);
-                    // Green cross
-                    paint.setColor(Color.argb(200, 50, 255, 50));
-                    canvas.drawRect(cx - 2, y - 6, cx + 2, y - 1, paint);
-                    canvas.drawRect(cx - 4, y - 4, cx + 4, y - 3, paint);
+                    // Green healing aura (large, pulsing circle)
+                    float healPulse = 0.4f + 0.6f * (float) Math.sin(now / 400.0);
+                    paint.setColor(Color.argb((int) (50 * healPulse), 50, 255, 50));
+                    canvas.drawCircle(cx, cy, length * 0.8f, paint);
+                    // Prominent green cross on top
+                    paint.setColor(Color.argb(220, 50, 255, 50));
+                    canvas.drawRect(cx - 3, y - 8, cx + 3, y - 1, paint);
+                    canvas.drawRect(cx - 6, y - 6, cx + 6, y - 3, paint);
+                    // Green tint
+                    paint.setColor(Color.argb(30, 50, 255, 50));
+                    canvas.drawRect(rect, paint);
                     break;
+
                 case TYPE_CLOAKER:
                     if (cloaked) {
-                        // Semi-transparent overlay when cloaked
-                        paint.setColor(Color.argb(150, 0, 0, 0));
+                        // Mostly invisible - just a shimmer outline
+                        paint.setColor(Color.argb(180, 0, 0, 0));
                         canvas.drawRect(rect, paint);
+                        // Shimmer edge
+                        float shimmer = 0.3f + 0.7f * (float) Math.sin(now / 150.0);
+                        paint.setColor(Color.argb((int) (40 * shimmer), 180, 50, 255));
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(2);
+                        canvas.drawRect(x - 1, y - 1, x + length + 1, y + height + 1, paint);
+                        paint.setStyle(Paint.Style.FILL);
+                        paint.setStrokeWidth(1);
                     } else {
-                        // Purple marker when visible
-                        paint.setColor(Color.argb(150, 180, 50, 255));
-                        canvas.drawCircle(cx, y - 3, 3, paint);
+                        // Purple stealth marker + eye symbol
+                        paint.setColor(Color.argb(40, 180, 50, 255));
+                        canvas.drawRect(rect, paint);
+                        paint.setColor(Color.argb(180, 200, 80, 255));
+                        // Eye shape
+                        canvas.drawCircle(cx, y - 4, 4, paint);
+                        paint.setColor(Color.argb(255, 100, 0, 200));
+                        canvas.drawCircle(cx, y - 4, 2, paint);
                     }
                     break;
+
                 case TYPE_BOMBER:
-                    // Orange bomb indicator
-                    paint.setColor(Color.argb(200, 255, 150, 0));
-                    canvas.drawCircle(cx, y + height + 5, 4, paint);
+                    // Orange bomb below with animated fuse
+                    paint.setColor(Color.argb(220, 255, 150, 0));
+                    canvas.drawCircle(cx, y + height + 7, 6, paint);
+                    paint.setColor(Color.argb(180, 200, 100, 0));
+                    canvas.drawCircle(cx, y + height + 7, 4, paint);
+                    // Fuse line
+                    paint.setColor(Color.argb(200, 150, 100, 50));
+                    canvas.drawLine(cx + 3, y + height + 3, cx + 7, y + height - 2, paint);
                     // Fuse spark
-                    float sparkPh = (float) Math.sin(System.currentTimeMillis() / 100.0);
-                    paint.setColor(Color.argb((int) (200 * (0.5f + 0.5f * sparkPh)), 255, 255, 100));
-                    canvas.drawCircle(cx + 2, y + height + 2, 2, paint);
-                    break;
-                case TYPE_ELITE:
-                    // Gold crown indicator
-                    paint.setColor(Color.argb(220, 255, 215, 0));
-                    canvas.drawRect(cx - 5, y - 5, cx + 5, y - 3, paint);
-                    canvas.drawRect(cx - 5, y - 8, cx - 3, y - 5, paint);
-                    canvas.drawRect(cx - 1, y - 8, cx + 1, y - 5, paint);
-                    canvas.drawRect(cx + 3, y - 8, cx + 5, y - 5, paint);
-                    // Gold tint
-                    paint.setColor(Color.argb(40, 255, 215, 0));
+                    float sparkPh = 0.5f + 0.5f * (float) Math.sin(now / 100.0);
+                    paint.setColor(Color.argb((int) (255 * sparkPh), 255, 255, 100));
+                    canvas.drawCircle(cx + 7, y + height - 2, 3 * sparkPh, paint);
+                    // Warning tint
+                    paint.setColor(Color.argb(25, 255, 150, 0));
                     canvas.drawRect(rect, paint);
+                    break;
+
+                case TYPE_ELITE:
+                    // Gold crown (larger, more prominent)
+                    paint.setColor(Color.argb(240, 255, 215, 0));
+                    canvas.drawRect(cx - 7, y - 5, cx + 7, y - 3, paint);
+                    canvas.drawRect(cx - 7, y - 9, cx - 4, y - 5, paint);
+                    canvas.drawRect(cx - 1, y - 10, cx + 1, y - 5, paint);
+                    canvas.drawRect(cx + 4, y - 9, cx + 7, y - 5, paint);
+                    // Gold tint + sparkle
+                    paint.setColor(Color.argb(50, 255, 215, 0));
+                    canvas.drawRect(rect, paint);
+                    // Gold outline
+                    paint.setColor(Color.argb(120, 255, 215, 0));
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(2);
+                    canvas.drawRect(x - 2, y - 2, x + length + 2, y + height + 2, paint);
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setStrokeWidth(1);
                     break;
             }
         }
