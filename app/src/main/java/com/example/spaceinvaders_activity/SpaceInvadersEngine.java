@@ -54,6 +54,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
     private AchievementManager achievementManager;
     private VFXManager vfx;
     private BossController bossController;
+    private EnvironmentRenderer envRenderer;
 
     // Sound
     private SoundPool soundPool;
@@ -106,6 +107,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         particles = new ParticleEffect();
         achievementManager = new AchievementManager(gameData);
         vfx = new VFXManager(screenX, screenY);
+        envRenderer = new EnvironmentRenderer(screenX, screenY);
 
         // Load graphics
         brickBitmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.brick);
@@ -226,6 +228,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Player ship
         playerShip = new PlayerShip(context, screenX, screenY);
         playerShip.applySkills(state.activeSkills);
+
+        // Set environment zone
+        envRenderer.setZone(config.zone);
 
         // Clear bullets
         playerBullets.clear();
@@ -470,9 +475,10 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Update power-ups
         updatePowerUps();
 
-        // Update particles, VFX, and screen shake
+        // Update particles, VFX, environment, and screen shake
         particles.update(fps);
         vfx.update(fps);
+        envRenderer.update(fps);
         vfx.setComboIntensity(state.comboCount);
         updateShake();
 
@@ -1178,6 +1184,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         // Background
         canvas.drawBitmap(backgroundBitmap, 0, 0, null);
 
+        // Zone environment background effects
+        envRenderer.drawBackground(canvas, paint);
+
         // VFX Layer 1: Starfield + ambient dust (behind everything)
         vfx.drawStarfield(canvas, paint);
         vfx.drawDust(canvas, paint);
@@ -1242,6 +1251,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
         for (PowerUp pu : powerUps) {
             pu.draw(canvas, paint);
         }
+
+        // Zone environment foreground effects (Dark Matter overlay)
+        envRenderer.drawForeground(canvas, paint,
+                playerShip.getX() + playerShip.getLength_EGG() / 2,
+                screenY - playerShip.getHeight_EGG() / 2);
 
         // Particle effects
         particles.draw(canvas, paint);
