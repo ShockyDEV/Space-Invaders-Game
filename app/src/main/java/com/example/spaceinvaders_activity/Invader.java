@@ -45,6 +45,7 @@ public class Invader {
 
     // Enemy type (affects appearance and behavior)
     // 0=normal, 1=scout, 2=tank, 3=boss, 4=shielded, 5=splitter, 6=kamikaze
+    // 7=healer, 8=cloaker, 9=bomber, 10=elite
     public static final int TYPE_NORMAL = 0;
     public static final int TYPE_SCOUT = 1;
     public static final int TYPE_TANK = 2;
@@ -52,6 +53,10 @@ public class Invader {
     public static final int TYPE_SHIELDED = 4;
     public static final int TYPE_SPLITTER = 5;
     public static final int TYPE_KAMIKAZE = 6;
+    public static final int TYPE_HEALER = 7;
+    public static final int TYPE_CLOAKER = 8;
+    public static final int TYPE_BOMBER = 9;
+    public static final int TYPE_ELITE = 10;
 
     private int enemyType = 0;
     private int pointValue = 10;
@@ -65,6 +70,22 @@ public class Invader {
     // Kamikaze type: moves toward player
     private float targetPlayerX = -1;
     private float kamikazeSpeedY = 0;
+
+    // Healer type: periodically heals adjacent invaders
+    private long lastHealTime = 0;
+    private static final long HEAL_INTERVAL = 3000;
+
+    // Cloaker type: toggles semi-transparency
+    private boolean cloaked = false;
+    private long cloakToggleTime = 0;
+    private static final long CLOAK_VISIBLE_DURATION = 3000;
+    private static final long CLOAK_HIDDEN_DURATION = 2000;
+
+    // Bomber type: drops timed bomb on death
+    private boolean hasBomb = true;
+
+    // Elite type: unpredictable movement
+    private float eliteMoveSeed = 0;
 
     // Freeze state
     private boolean frozen = false;
@@ -156,6 +177,26 @@ public class Invader {
                 pointValue = 20;
                 shipSpeed = baseSpeed * 1.2f;
                 kamikazeSpeedY = baseSpeed * 0.5f;
+                break;
+            case TYPE_HEALER:
+                pointValue = 25;
+                lastHealTime = System.currentTimeMillis();
+                break;
+            case TYPE_CLOAKER:
+                pointValue = 30;
+                cloakToggleTime = System.currentTimeMillis() + CLOAK_VISIBLE_DURATION;
+                break;
+            case TYPE_BOMBER:
+                pointValue = 20;
+                hasBomb = true;
+                break;
+            case TYPE_ELITE:
+                pointValue = 40;
+                health = 2;
+                maxHealth = 2;
+                shipSpeed = baseSpeed * 1.1f;
+                this.shotChance = Math.max(1, this.shotChance / 2); // Fires 2x more
+                eliteMoveSeed = (float) (Math.random() * 1000);
                 break;
         }
     }
@@ -275,6 +316,36 @@ public class Invader {
 
     public boolean isKamikaze() { return enemyType == TYPE_KAMIKAZE; }
 
+    // --- Healer ---
+
+    /** Returns true if this healer should heal a neighbor this frame */
+    public boolean shouldHeal() {
+        if (enemyType != TYPE_HEALER || !isVisible) return false;
+        long now = System.currentTimeMillis();
+        if (now - lastHealTime >= HEAL_INTERVAL) {
+            lastHealTime = now;
+            return true;
+        }
+        return false;
+    }
+
+    public void heal(int amount) {
+        health = Math.min(maxHealth, health + amount);
+    }
+
+    // --- Cloaker ---
+
+    public boolean isCloaked() { return enemyType == TYPE_CLOAKER && cloaked; }
+
+    // --- Bomber ---
+
+    public boolean isBomber() { return enemyType == TYPE_BOMBER; }
+    public boolean hasBombOnDeath() { return enemyType == TYPE_BOMBER && hasBomb; }
+
+    // --- Elite ---
+
+    public boolean isElite() { return enemyType == TYPE_ELITE; }
+
     // --- Freeze ---
 
     public void freeze(long duration) {
@@ -339,6 +410,18 @@ public class Invader {
         // Update hit flash
         if (isHit && now - hitFlashTime > HIT_FLASH_DURATION) {
             isHit = false;
+        }
+
+        // Cloaker: toggle cloak
+        if (enemyType == TYPE_CLOAKER && now > cloakToggleTime) {
+            cloaked = !cloaked;
+            cloakToggleTime = now + (cloaked ? CLOAK_HIDDEN_DURATION : CLOAK_VISIBLE_DURATION);
+        }
+
+        // Elite: slight sinusoidal offset for unpredictable movement
+        if (enemyType == TYPE_ELITE) {
+            float wobble = (float) Math.sin(now / 300.0 + eliteMoveSeed) * 2f;
+            x += wobble;
         }
 
         rect.top = y;
@@ -460,6 +543,47 @@ public class Invader {
                     paint.setColor(Color.argb((int) (150 * flicker), 255, 150, 0));
                     canvas.drawCircle(cx - 3, y + height + 6, 3 * flicker, paint);
                     canvas.drawCircle(cx + 3, y + height + 6, 3 * flicker, paint);
+                    break;
+                case TYPE_HEALER:
+                    // Green aura pulse
+                    float healPulse = 0.4f + 0.6f * (float) Math.sin(System.currentTimeMillis() / 400.0);
+                    paint.setColor(Color.argb((int) (60 * healPulse), 50, 255, 50));
+                    canvas.drawCircle(cx, y + height / 2, length * 0.6f, paint);
+                    // Green cross
+                    paint.setColor(Color.argb(200, 50, 255, 50));
+                    canvas.drawRect(cx - 2, y - 6, cx + 2, y - 1, paint);
+                    canvas.drawRect(cx - 4, y - 4, cx + 4, y - 3, paint);
+                    break;
+                case TYPE_CLOAKER:
+                    if (cloaked) {
+                        // Semi-transparent overlay when cloaked
+                        paint.setColor(Color.argb(150, 0, 0, 0));
+                        canvas.drawRect(rect, paint);
+                    } else {
+                        // Purple marker when visible
+                        paint.setColor(Color.argb(150, 180, 50, 255));
+                        canvas.drawCircle(cx, y - 3, 3, paint);
+                    }
+                    break;
+                case TYPE_BOMBER:
+                    // Orange bomb indicator
+                    paint.setColor(Color.argb(200, 255, 150, 0));
+                    canvas.drawCircle(cx, y + height + 5, 4, paint);
+                    // Fuse spark
+                    float sparkPh = (float) Math.sin(System.currentTimeMillis() / 100.0);
+                    paint.setColor(Color.argb((int) (200 * (0.5f + 0.5f * sparkPh)), 255, 255, 100));
+                    canvas.drawCircle(cx + 2, y + height + 2, 2, paint);
+                    break;
+                case TYPE_ELITE:
+                    // Gold crown indicator
+                    paint.setColor(Color.argb(220, 255, 215, 0));
+                    canvas.drawRect(cx - 5, y - 5, cx + 5, y - 3, paint);
+                    canvas.drawRect(cx - 5, y - 8, cx - 3, y - 5, paint);
+                    canvas.drawRect(cx - 1, y - 8, cx + 1, y - 5, paint);
+                    canvas.drawRect(cx + 3, y - 8, cx + 5, y - 5, paint);
+                    // Gold tint
+                    paint.setColor(Color.argb(40, 255, 215, 0));
+                    canvas.drawRect(rect, paint);
                     break;
             }
         }

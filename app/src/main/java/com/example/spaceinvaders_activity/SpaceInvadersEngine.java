@@ -432,6 +432,35 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             return;
         }
 
+        // Healer enemies: periodically heal adjacent invaders
+        for (Invader inv : invaders) {
+            if (inv.getVisibility() && inv.shouldHeal()) {
+                // Find nearest visible non-healer invader and heal +1 HP
+                float hx = inv.getX() + inv.getLength() / 2;
+                float hy = inv.getY() + inv.getHeight() / 2;
+                float bestDist = Float.MAX_VALUE;
+                Invader target = null;
+                for (Invader other : invaders) {
+                    if (other == inv || !other.getVisibility()) continue;
+                    if (other.getEnemyType() == Invader.TYPE_HEALER) continue;
+                    if (other.getHealth() >= other.getMaxHealth()) continue;
+                    float dx = other.getX() + other.getLength() / 2 - hx;
+                    float dy = other.getY() + other.getHeight() / 2 - hy;
+                    float d = dx * dx + dy * dy;
+                    if (d < bestDist) {
+                        bestDist = d;
+                        target = other;
+                    }
+                }
+                if (target != null) {
+                    target.heal(1);
+                    float tx = target.getX() + target.getLength() / 2;
+                    float ty = target.getY() + target.getHeight() / 2;
+                    particles.addSparkleBurst(tx, ty, Color.rgb(50, 255, 50), 5);
+                }
+            }
+        }
+
         // Update player bullets and check collisions
         updatePlayerBullets();
 
@@ -487,6 +516,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             // Check vs invaders
             for (Invader inv : invaders) {
                 if (inv.getVisibility() && RectF.intersects(b.getRect(), inv.getRect())) {
+                    // Cloaker: immune while cloaked
+                    if (inv.isCloaked()) {
+                        continue;
+                    }
+
                     // Shielded enemy: absorb first hit
                     if (inv.hasShield()) {
                         inv.hitShield();
@@ -554,6 +588,26 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                             particles.addExplosion(ex, ey, Color.rgb(255, 255, 100), 10);
                             particles.addImpactSparks(ex, ey, Color.rgb(255, 255, 150), 8, 270f);
                             break;
+                        case Invader.TYPE_HEALER:
+                            // Green healing burst
+                            particles.addSparkleBurst(ex, ey, Color.rgb(50, 255, 50), 15);
+                            particles.addExplosion(ex, ey, Color.rgb(100, 255, 100), 10);
+                            break;
+                        case Invader.TYPE_CLOAKER:
+                            // Purple phasing effect
+                            particles.addSparkleBurst(ex, ey, Color.rgb(180, 50, 255), 12);
+                            vfx.addShockwave(ex, ey, 60f, Color.rgb(180, 50, 255), 2f);
+                            break;
+                        case Invader.TYPE_BOMBER:
+                            // Orange explosion (handled by bomberExplosion, just add sparks)
+                            particles.addImpactSparks(ex, ey, Color.rgb(255, 200, 50), 10, 0);
+                            break;
+                        case Invader.TYPE_ELITE:
+                            // Gold explosion with debris
+                            particles.addExplosion(ex, ey, Color.rgb(255, 215, 0), 15);
+                            particles.addDebris(ex, ey, Color.rgb(200, 180, 50), 8);
+                            vfx.addShockwave(ex, ey, 80f, Color.rgb(255, 215, 0), 3f);
+                            break;
                         default:
                             // Standard explosion
                             particles.addExplosion(ex, ey, Color.rgb(255, 150, 50), 12);
@@ -575,6 +629,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
                         pendingSplitterChildren.add(
                                 Invader.createSplitterChild(context, ex, ey, screenX, screenY,
                                         state.levelConfig.invaderBaseSpeed, false));
+                    }
+
+                    // Bomber: timed explosion on death, destroys nearby bricks
+                    if (inv.hasBombOnDeath()) {
+                        bomberExplosion(ex, ey);
                     }
 
                     // Power-up drop (Lucky Drops doubles chance)
@@ -667,6 +726,27 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable {
             particles.addBanner("SPLITTER!", Color.rgb(50, 255, 50),
                     screenX, screenY, screenY / 18f);
         }
+    }
+
+    /** Bomber enemy: on death, explodes destroying nearby bricks and damaging player if close */
+    private void bomberExplosion(float bx, float by) {
+        float blastRadius = screenX / 6f;
+        // Destroy nearby bricks
+        for (int j = 0; j < numBricks; j++) {
+            if (bricks[j].getVisibility()) {
+                float dx = bricks[j].getRect().centerX() - bx;
+                float dy = bricks[j].getRect().centerY() - by;
+                if (dx * dx + dy * dy < blastRadius * blastRadius) {
+                    bricks[j].setInvisible();
+                }
+            }
+        }
+        // VFX
+        particles.addBigExplosion(bx, by);
+        vfx.addShockwave(bx, by, blastRadius, Color.rgb(255, 150, 0), 5f);
+        vfx.triggerScreenFlash(Color.rgb(255, 100, 0), 0.15f);
+        triggerShake(8f, 200);
+        particles.addBanner("BOMB!", Color.rgb(255, 150, 0), screenX, screenY, screenY / 18f);
     }
 
     /** Chain Lightning: arc damage to up to 2 nearby enemies on kill */
