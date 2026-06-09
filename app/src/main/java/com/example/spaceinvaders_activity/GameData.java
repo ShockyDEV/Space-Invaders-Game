@@ -57,43 +57,49 @@ public class GameData {
     }
 
     public int getXPForNextLevel() {
-        return getPlayerLevel() * XP_PER_LEVEL_MULTIPLIER;
+        return xpForNextLevel(getPlayerLevel());
     }
 
     public int getCurrentLevelXP() {
-        int totalXP = getTotalXP();
-        int level = getPlayerLevel();
-        int xpUsed = 0;
-        for (int i = 1; i < level; i++) {
-            xpUsed += i * XP_PER_LEVEL_MULTIPLIER;
-        }
-        return totalXP - xpUsed;
+        return currentLevelXP(getTotalXP(), getPlayerLevel());
     }
 
     public boolean addXP(int xp) {
         int totalXP = getTotalXP() + xp;
-        int level = getPlayerLevel();
-        boolean leveledUp = false;
-
-        while (getCurrentLevelXPWith(totalXP, level) >= level * XP_PER_LEVEL_MULTIPLIER) {
-            level++;
-            leveledUp = true;
-        }
+        int oldLevel = getPlayerLevel();
+        int level = levelForTotalXP(totalXP, oldLevel);
 
         SharedPreferences.Editor editor = prefs.edit();
         editor.putInt(KEY_TOTAL_XP, totalXP);
         editor.putInt(KEY_PLAYER_LEVEL, level);
         editor.apply();
 
-        return leveledUp;
+        return level > oldLevel;
     }
 
-    private int getCurrentLevelXPWith(int totalXP, int level) {
+    // --- Pure XP math (no Android dependencies, unit-testable) ---
+
+    /** XP required to advance from {@code level} to the next level. */
+    static int xpForNextLevel(int level) {
+        return level * XP_PER_LEVEL_MULTIPLIER;
+    }
+
+    /** XP accumulated within the current level (total minus all earlier levels' cost). */
+    static int currentLevelXP(int totalXP, int level) {
         int xpUsed = 0;
         for (int i = 1; i < level; i++) {
             xpUsed += i * XP_PER_LEVEL_MULTIPLIER;
         }
         return totalXP - xpUsed;
+    }
+
+    /** Resolve the player level for a given total XP, starting from {@code fromLevel}. */
+    static int levelForTotalXP(int totalXP, int fromLevel) {
+        int level = fromLevel;
+        while (currentLevelXP(totalXP, level) >= xpForNextLevel(level)) {
+            level++;
+        }
+        return level;
     }
 
     // --- High Score ---

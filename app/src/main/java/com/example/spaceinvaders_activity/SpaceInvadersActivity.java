@@ -1,93 +1,119 @@
 package com.example.spaceinvaders_activity;
 
-import androidx.appcompat.app.AppCompatActivity;
-
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
-import android.os.Bundle;
-import android.app.Activity;
 import android.graphics.Point;
+import android.os.Bundle;
 import android.view.Display;
 
-    // SpaceInvadersActivity es el comienzo de la aplicación
-    // Será quien se encarga de administrar todas las llamadas al resto de las actividades y métodos
+import java.util.ArrayList;
+import java.util.List;
+
+    // SpaceInvadersActivity es el comienzo de la aplicación.
+    // Administra el ciclo de vida del motor del juego y los diálogos de pre-partida y Game Over.
 public class SpaceInvadersActivity extends Activity {
 
     SpaceInvadersEngine spaceInvadersEngine;
     private boolean isGameInitialized = false;
+    private GameData gameData;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Inicializa el juego con una dificultad predeterminada.
-        initGame("Facil"); // Inicia con la dificultad fácil como ejemplo.
+        gameData = new GameData(this);
+        initGame();
+
+        // Pantalla de selección de habilidades antes de empezar a jugar.
+        showSkillSelection();
     }
 
-    // Este método inicia o reinicia el juego con la dificultad seleccionada.
-    private void initGame(String difficulty) {
+    // Crea el motor del juego (una sola vez) y lo establece como vista de contenido.
+    private void initGame() {
         Display display = getWindowManager().getDefaultDisplay();
         Point size = new Point();
         display.getSize(size);
 
-        // Si el juego aún no ha sido inicializado, crea una nueva instancia.
         if (!isGameInitialized) {
-            spaceInvadersEngine = new SpaceInvadersEngine(this, size.x, size.y, difficulty);
+            spaceInvadersEngine = new SpaceInvadersEngine(this, size.x, size.y, "Facil");
             setContentView(spaceInvadersEngine);
             isGameInitialized = true;
-        } else {
-            // Si el juego ya está en ejecución, simplemente actualiza la dificultad.
-            spaceInvadersEngine.setDifficulty(difficulty);
         }
     }
 
-    public void showDifficultySelection() {
-        // Este método se llama desde el motor del juego para mostrar el menú de selección de dificultad.
+    // Diálogo de selección de habilidades. El jugador elige hasta MAX_ACTIVE_SKILLS
+    // de entre las desbloqueadas para su nivel actual.
+    public void showSkillSelection() {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                // Mostrar el diálogo de selección de dificultad.
-                showDifficultyMenu();
-            }
-        });
-    }
+                final int playerLevel = gameData.getPlayerLevel();
+                final List<Skill> available = Skill.getAvailableSkills(playerLevel);
 
-    // Método para mostrar el menú de selección de dificultad.
-    private void showDifficultyMenu() {
-        // Ejecutar en el hilo de la interfaz de usuario para asegurar que se manejen los elementos de UI correctamente.
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
+                final CharSequence[] names = new CharSequence[available.size()];
+                for (int i = 0; i < available.size(); i++) {
+                    Skill s = available.get(i);
+                    names[i] = s.name + " — " + s.description;
+                }
+
+                final boolean[] checked = new boolean[available.size()];
+                final List<Integer> selected = new ArrayList<>();
+
                 AlertDialog.Builder builder = new AlertDialog.Builder(SpaceInvadersActivity.this);
-                builder.setTitle("Elige la dificultad");
-                builder.setItems(new CharSequence[]{"Facil", "Dificil"}, new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        String selectedDifficulty = (which == 0) ? "Facil" : "Dificil";
-                        initGame(selectedDifficulty);
+                builder.setTitle("Habilidades (máx " + Skill.MAX_ACTIVE_SKILLS + ") · Nivel " + playerLevel);
+                builder.setMultiChoiceItems(names, checked, new DialogInterface.OnMultiChoiceClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which, boolean isChecked) {
+                        int id = available.get(which).id;
+                        if (isChecked) {
+                            if (selected.size() >= Skill.MAX_ACTIVE_SKILLS) {
+                                // Revertimos la selección por encima del límite permitido.
+                                ((AlertDialog) dialog).getListView().setItemChecked(which, false);
+                                checked[which] = false;
+                            } else {
+                                selected.add(id);
+                            }
+                        } else {
+                            selected.remove((Integer) id);
+                        }
                     }
                 });
-                AlertDialog difficultyDialog = builder.create();
-                difficultyDialog.setCancelable(false); // Evita que el usuario cancele el diálogo.
-                difficultyDialog.show();
+                builder.setPositiveButton("Jugar", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        spaceInvadersEngine.startGame(1, new ArrayList<>(selected), false);
+                    }
+                });
+                builder.setCancelable(false);
+                builder.show();
             }
         });
     }
 
-    public void showGameOverScreen() {
+    // Pantalla de Game Over con estadísticas persistidas de la partida.
+    public void showGameOverScreen(final int score, final int levelReached, final int playerLevel,
+                                   final int xpEarned, final int highScore, final boolean newHighScore) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 AlertDialog.Builder builder = new AlertDialog.Builder(SpaceInvadersActivity.this);
-                builder.setTitle("Game Over");
-                builder.setMessage("¡El juego ha terminado!");
-                builder.setPositiveButton("Aceptar", new DialogInterface.OnClickListener() {
+                builder.setTitle(newHighScore ? "¡Nuevo récord!" : "Game Over");
+                String message = "Puntuación: " + score + "\n"
+                        + "Nivel alcanzado: " + levelReached + "\n"
+                        + "Nivel de jugador: " + playerLevel + "\n"
+                        + "XP ganada: " + xpEarned + "\n"
+                        + "Récord: " + highScore;
+                builder.setMessage(message);
+                builder.setPositiveButton("Jugar de nuevo", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        showDifficultySelection();
+                        showSkillSelection();
                     }
                 });
 
                 AlertDialog gameOverDialog = builder.create();
+                gameOverDialog.setCancelable(false);
                 gameOverDialog.show();
             }
         });
@@ -97,20 +123,16 @@ public class SpaceInvadersActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Mostrar el menú de selección de dificultad al reanudar si el juego ya está inicializado.
         if (isGameInitialized) {
             spaceInvadersEngine.resume();
-            showDifficultyMenu();
         }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        // Pausar el motor del juego si está en ejecución.
         if (isGameInitialized) {
             spaceInvadersEngine.pause();
         }
     }
 }
-

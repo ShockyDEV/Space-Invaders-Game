@@ -44,8 +44,12 @@ public class PowerUp {
     }
 
     public static PowerUp createRandom(float x, float y, float screenSize) {
-        int type = random.nextInt(5);
-        return new PowerUp(type, x, y, screenSize);
+        return new PowerUp(randomType(), x, y, screenSize);
+    }
+
+    /** Pick a random power-up type id. Pure logic (no Android dependency), unit-testable. */
+    static int randomType() {
+        return random.nextInt(5);
     }
 
     public static boolean shouldDrop() {
