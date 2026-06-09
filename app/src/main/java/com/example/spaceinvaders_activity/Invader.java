@@ -177,6 +177,7 @@ public class Invader {
     public float getHeight() { return height; }
 
     public void update(long fps) {
+        if (fps <= 0) return; // Avoid divide-by-zero before the first frame is timed
         if (isFrozen()) return; // Don't move when frozen
 
         if (shipMoving == LEFT) {

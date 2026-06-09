@@ -20,6 +20,8 @@ import android.view.SurfaceView;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class SpaceInvadersEngine extends SurfaceView implements Runnable{
 
@@ -55,17 +57,17 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
     // La nave del jugador
     private PlayerShip playerShip;
 
-    // La bala del jugador
-    private Bullet bullet;
-
-    // Las balas de los invasores
-    private Bullet[] invadersBullets = new Bullet[200];
+    // Las balas de los invasores (el tamaño del pool se ajusta por nivel)
+    private Bullet[] invadersBullets;
     private int nextBullet;
     private int maxInvaderBullets = 10;
 
     // Hasta 60 invasores
     Invader[] invaders = new Invader[60];
     int numInvaders = 0;
+
+    // Invasores que quedan por destruir para completar el nivel
+    private int invadersRemaining = 0;
 
     // Los refugios del jugador están construidos con ladrillos
     private DefenceBrick[] bricks = new DefenceBrick[400];
@@ -85,7 +87,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
     // Vidas
     private int lives = 3;
 
+    // Balas del jugador, propiedad exclusiva del hilo del juego
     private List<Bullet> bullets = new ArrayList<>();
+
+    // Balas disparadas desde el hilo de UI (onTouchEvent); se vacían al inicio de update()
+    private final Queue<Bullet> pendingPlayerBullets = new ConcurrentLinkedQueue<>();
 
     // Imágenes de ladrillos y fondo
     private Bitmap brickBitmap;
@@ -199,13 +205,16 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
         // Creamos la nave espacial del jugador
         playerShip = new PlayerShip(context, screenX, screenY);
 
-        // Prepara los laseres del jugador
-        bullet = new Bullet(screenY);
+        // Las balas del jugador en vuelo se descartan al preparar un nivel
+        bullets.clear();
+        pendingPlayerBullets.clear();
 
-        // Inicializamos los laseres de los enemigos
+        // Inicializamos el pool de laseres de los enemigos al tamaño máximo permitido
+        invadersBullets = new Bullet[maxInvaderBullets];
         for(int i = 0; i < invadersBullets.length; i++){
             invadersBullets[i] = new Bullet(screenY);
         }
+        nextBullet = 0;
 
         int numRows; //TODO:Esta parte no está funcionando bien porque se llama primero a initgame antes que a preparelevel, arreglar si da tiempo.....
 
@@ -226,6 +235,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
                 numInvaders++;
             }
         }
+        invadersRemaining = numInvaders;
 
         if(backgroundMusic == null) { //Inicializamos la música base que sonará mientras jugamos
             backgroundMusic = MediaPlayer.create(context, R.raw.background);
@@ -277,6 +287,12 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
 
 
     private void update() {
+        // Vacía las balas encoladas desde el hilo de UI antes de iterar la lista (evita ConcurrentModificationException)
+        Bullet queued;
+        while ((queued = pendingPlayerBullets.poll()) != null) {
+            bullets.add(queued);
+        }
+
         // Si el enemigo invasor ha chocado contra la pared
         boolean chocado = false;
 
@@ -327,8 +343,9 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
                         invaders[j].setInvisible();
                         soundPool.play(invaderExplodeID, 1, 1, 0, 0, 1);
                         score += 10;
+                        invadersRemaining--;
 
-                        if (score == numInvaders * 10) {
+                        if (invadersRemaining <= 0) {
                             paused = true;
                             score = 0;
                             lives = 3;
@@ -418,32 +435,6 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
             soundPool.play(playerLoseID, 1, 1, 0, 0, 1);
             prepareLevel();
         }
-
-        // Verifica colisiones entre los laseres de los invasores y los bricks de la defensa
-        boolean colisionConBloque = false;
-        for (int i = 0; i < invadersBullets.length; i++) {
-            Bullet balaInvasor = invadersBullets[i];
-            if (balaInvasor != null && !balaInvasor.isOffScreen(screenY)) {
-                balaInvasor.update(fps);
-
-                for (int j = 0; j < numBricks; j++) {
-                    if (bricks[j].getVisibility() && RectF.intersects(balaInvasor.getRect(), bricks[j].getRect())) {
-                        bricks[j].setInvisible();
-                        soundPool.play(damageShelterID, 1, 1, 0, 0, 1);
-                        colisionConBloque = true;
-
-                        // Elimina el laser del array
-                        invadersBullets[i] = null;
-
-                        break;
-                    }
-
-                    if (colisionConBloque) {
-                        invadersBullets[i] = null;
-                    }
-                }
-            }
-        }
     }
 
 
@@ -525,7 +516,7 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
                     // Crea y dispara una nueva bala
                     Bullet nuevaBala = new Bullet(screenY);
                     nuevaBala.shoot(playerShip.getX() + playerShip.getLength_EGG() / 2, screenY - playerShip.getHeight_EGG(), Bullet.UP);
-                    bullets.add(nuevaBala); // Agrega a la lista de balas
+                    pendingPlayerBullets.add(nuevaBala); // El hilo del juego la añadirá a la lista en update()
                     soundPool.play(shootID, 1, 1, 0, 0, 1);
                 }
                 // De lo contrario, no disparar porque la nave está en cooldown
