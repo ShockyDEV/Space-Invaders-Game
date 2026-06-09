@@ -50,6 +50,9 @@ public class PlayerShip {
 
     private int screenX, screenY;
 
+    // Posición objetivo hacia la que la nave se desliza (suavizado del control táctil)
+    private float targetX;
+
     public PlayerShip(Context context, int screenX, int screenY) {
         rect = new RectF();
         this.screenX = screenX;
@@ -60,6 +63,7 @@ public class PlayerShip {
 
         x = screenX / 2f;
         y = screenY - height_EGG;
+        targetX = x;
 
         bitmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.playership);
         bitmap = Bitmap.createScaledBitmap(bitmap, (int) length_EGG, (int) height_EGG, false);
@@ -177,14 +181,10 @@ public class PlayerShip {
     // --- Position & shooting ---
 
     public void updatePosition(float touchX) {
-        x = touchX - length_EGG / 2;
-        // Clamp to screen bounds
-        if (x < 0) x = 0;
-        if (x > screenX - length_EGG) x = screenX - length_EGG;
-        rect.left = x;
-        rect.right = x + length_EGG;
-        rect.top = y;
-        rect.bottom = y + height_EGG;
+        // Solo fija el destino; la nave se desliza hacia él en update() para evitar el teletransporte
+        targetX = touchX - length_EGG / 2;
+        if (targetX < 0) targetX = 0;
+        if (targetX > screenX - length_EGG) targetX = screenX - length_EGG;
     }
 
     public boolean tryShoot() {
@@ -206,6 +206,14 @@ public class PlayerShip {
         if (tempRapidFire && now > tempRapidFireEnd) tempRapidFire = false;
         if (tempShield && now > tempShieldEnd) tempShield = false;
         if (tempScoreBoost && now > tempScoreBoostEnd) tempScoreBoost = false;
+
+        // Desliza suavemente la nave hacia la posición objetivo (control con inercia)
+        // Speed Boost hace que la nave responda más rápido.
+        float responsiveness = hasSpeedBoost ? 20f : 13f;
+        float alpha = Math.min(1f, responsiveness / Math.max(1, fps));
+        x += (targetX - x) * alpha;
+        // Encaja al destino cuando ya está muy cerca para no quedar a medio píxel
+        if (Math.abs(targetX - x) < 0.5f) x = targetX;
 
         // Update shield pulse animation
         if (isShielded()) {

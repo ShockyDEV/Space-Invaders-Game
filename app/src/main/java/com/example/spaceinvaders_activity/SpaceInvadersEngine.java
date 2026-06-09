@@ -106,6 +106,11 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
     private boolean endlessMode = false;
     private List<Integer> activeSkillIds = new ArrayList<>();
 
+    // Modificadores de dificultad elegidos en el menú de inicio
+    private float diffSpeedMult = 1f;
+    private float diffShotMult = 1f;
+    private int diffBonusLives = 0;
+
     // Contadores por partida (se reinician en startGame)
     private int killsThisGame = 0;
     private long gameStartTime = 0;
@@ -194,6 +199,24 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
     }
 
 
+    // Aplica el modificador de dificultad elegido en el menú.
+    public void setDifficultyMode(String mode) {
+        this.difficulty = mode;
+        if ("Dificil".equals(mode)) {
+            diffSpeedMult = 1.3f;
+            diffShotMult = 0.65f;   // dispara más a menudo (shotChance menor)
+            diffBonusLives = 0;
+        } else if ("Facil".equals(mode)) {
+            diffSpeedMult = 0.8f;
+            diffShotMult = 1.6f;    // dispara menos a menudo
+            diffBonusLives = 1;
+        } else { // Normal
+            diffSpeedMult = 1f;
+            diffShotMult = 1f;
+            diffBonusLives = 0;
+        }
+    }
+
     // Inicia una nueva partida desde un nivel concreto con las habilidades elegidas.
     public void startGame(int level, List<Integer> skillIds, boolean endless) {
         this.endlessMode = endless;
@@ -210,8 +233,8 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
         levelConfig = configForLevel(currentLevel);
         prepareLevel(levelConfig);
 
-        // Vidas base + bonificación de la habilidad Escudo (solo al iniciar la partida)
-        lives = 3 + playerShip.getExtraLives();
+        // Vidas base + bonificación de la habilidad Escudo + bonificación de dificultad
+        lives = 3 + playerShip.getExtraLives() + diffBonusLives;
 
         gameStarted = true;
         paused = true; // Espera a que el jugador toque para empezar
@@ -273,12 +296,16 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
         }
         nextBullet = 0;
 
+        // Velocidad y frecuencia de disparo ajustadas por la dificultad elegida
+        float invaderSpeed = config.invaderBaseSpeed * diffSpeedMult;
+        int shotChance = Math.max(60, (int) (config.shotChance * diffShotMult));
+
         // Creamos un ejercito de enemigos invasores según la rejilla del nivel
         numInvaders = 0;
         for (int column = 0; column < config.numColumns; column++) {
             for (int row = 0; row < config.numRows; row++) {
                 invaders[numInvaders] = new Invader(context, row, column, screenX, screenY,
-                        config.invaderBaseSpeed, config.shotChance);
+                        invaderSpeed, shotChance);
                 numInvaders++;
             }
         }
@@ -286,17 +313,12 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
         // Jefe (boss) si el nivel lo incluye
         if (config.hasBoss) {
             invaders[numInvaders] = new Invader(context, screenX, screenY,
-                    config.bossSpeed, config.bossHealth);
+                    config.bossSpeed * diffSpeedMult, config.bossHealth);
             numInvaders++;
         }
         invadersRemaining = numInvaders;
 
-        if (backgroundMusic == null) { //Inicializamos la música base que sonará mientras jugamos
-            backgroundMusic = MediaPlayer.create(context, R.raw.background);
-            backgroundMusic.setLooping(true);
-        } else if (!backgroundMusic.isPlaying()) {
-            backgroundMusic.start();
-        }
+        ensureMusicPlaying();
 
         // Construimos los bloques de defensa
         int brickWidth = screenX / 90;
@@ -713,6 +735,15 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
         String levelLabel = endlessMode ? ("Infinito " + (currentLevel - GameConfig.MAX_LEVEL)) : ("Nivel " + currentLevel);
         canvas.drawText(levelLabel + "   Récord: " + gameData.getHighScore(), 20, 140, paint);
 
+        // Aviso de "toca para empezar" mientras el nivel está en pausa
+        if (paused) {
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(70);
+            paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("Toca para empezar", screenX / 2f, screenY * 0.62f, paint);
+            paint.setTextAlign(Paint.Align.LEFT);
+        }
+
         // Dibuja en la pantalla
         ourHolder.unlockCanvasAndPost(canvas);
     }
@@ -756,18 +787,16 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
         int action = motionEvent.getAction();
 
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
-            if (paused && motionEvent.getY() > screenY - screenY / 8) {
+            // Cualquier toque en la pantalla inicia el nivel (sin zona especial)
+            if (paused) {
                 paused = false;
             }
             playerShip.updatePosition(motionEvent.getX());
         } else if (action == MotionEvent.ACTION_UP) {
-            if (!paused && motionEvent.getY() < screenY - screenY / 8) {
-                // Verifica si la nave del jugador está lista para disparar
-                if (playerShip.tryShoot()) {
-                    fireBullets();
-                    soundPool.play(shootID, 1, 1, 0, 0, 1);
-                }
-                // De lo contrario, no disparar porque la nave está en cooldown
+            // Al levantar el dedo, dispara si la nave no está en enfriamiento
+            if (!paused && playerShip.tryShoot()) {
+                fireBullets();
+                soundPool.play(shootID, 1, 1, 0, 0, 1);
             }
         }
 
@@ -805,7 +834,18 @@ public class SpaceInvadersEngine extends SurfaceView implements Runnable{
         gameThread = new Thread(this);
         gameThread.start();
 
-        // Inicia la música al reanudar el juego
+        // Reanuda (o recrea) la música de fondo
+        ensureMusicPlaying();
+    }
+
+    // Crea la música de fondo si hace falta y la pone a sonar en bucle.
+    private void ensureMusicPlaying() {
+        if (backgroundMusic == null) {
+            backgroundMusic = MediaPlayer.create(context, R.raw.background);
+            if (backgroundMusic != null) {
+                backgroundMusic.setLooping(true);
+            }
+        }
         if (backgroundMusic != null && !backgroundMusic.isPlaying()) {
             backgroundMusic.start();
         }

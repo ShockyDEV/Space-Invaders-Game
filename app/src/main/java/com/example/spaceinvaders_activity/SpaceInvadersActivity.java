@@ -25,8 +25,30 @@ public class SpaceInvadersActivity extends Activity {
         gameData = new GameData(this);
         initGame();
 
-        // Pantalla de selección de habilidades antes de empezar a jugar.
-        showSkillSelection();
+        // Menú de inicio: primero dificultad, luego habilidades.
+        showDifficultySelection();
+    }
+
+    // Menú de dificultad mostrado al empezar y al reiniciar.
+    public void showDifficultySelection() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                final String[] options = {"Fácil", "Normal", "Difícil"};
+                final String[] modes = {"Facil", "Normal", "Dificil"};
+                AlertDialog.Builder builder = new AlertDialog.Builder(SpaceInvadersActivity.this);
+                builder.setTitle("Elige la dificultad");
+                builder.setItems(options, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        spaceInvadersEngine.setDifficultyMode(modes[which]);
+                        showSkillSelection();
+                    }
+                });
+                builder.setCancelable(false);
+                builder.show();
+            }
+        });
     }
 
     // Crea el motor del juego (una sola vez) y lo establece como vista de contenido.
@@ -108,7 +130,7 @@ public class SpaceInvadersActivity extends Activity {
                 builder.setPositiveButton("Jugar de nuevo", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        showSkillSelection();
+                        showDifficultySelection();
                     }
                 });
 
